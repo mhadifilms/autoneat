@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.python-version
+.venv/
+venv/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Bundled cliclick (downloaded by scripts/fetch_cliclick.sh —
+# distributed via Releases, not via git)
+plugin/autoneat_lib/resources/cliclick
+
+# Run artifacts
+.cache/
+last-run.json
+*.log
+
+# Local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.mobileprovision
+
+# Release outputs
+dist/
+build/

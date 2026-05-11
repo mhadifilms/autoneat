@@ -1,0 +1,42 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build release archive
+    runs-on: macos-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate Python sources
+        run: python3 -m compileall -q plugin
+
+      - name: Validate shell scripts
+        run: bash -n scripts/install.sh scripts/fetch_cliclick.sh
+
+      - name: Build installable archive
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME}"
+          ARCHIVE="autoneat-${VERSION}.zip"
+          mkdir -p dist/autoneat
+          cp -R plugin docs LICENSE README.md CHANGELOG.md scripts dist/autoneat/
+          (cd dist && zip -qry "${ARCHIVE}" autoneat)
+          shasum -a 256 "dist/${ARCHIVE}" > "dist/${ARCHIVE}.sha256"
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/autoneat-${{ github.ref_name }}.zip
+            dist/autoneat-${{ github.ref_name }}.zip.sha256
+          body_path: CHANGELOG.md
