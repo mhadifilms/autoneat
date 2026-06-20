@@ -11,7 +11,7 @@ import subprocess
 import time
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from autoneat_lib.core.subprocess_utils import run_proc
+from autoneat.core.subprocess_utils import run_proc
 
 RESOLVE_PROCESS = "Resolve"
 RESOLVE_APP = "DaVinci Resolve"

@@ -26,10 +26,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
-from autoneat_lib.core import neat_ofx, resolve_client, ui_driver, windows
-from autoneat_lib.core.ocr import cache_base
-from autoneat_lib.core.recorder import StepRecorder
-from autoneat_lib.core.shotid import filter_clips, shot_id_from_name
+from autoneat.core import neat_ofx, resolve_client, ui_driver, windows
+from autoneat.core.ocr import cache_base
+from autoneat.core.recorder import StepRecorder
+from autoneat.core.shotid import filter_clips, shot_id_from_name
 
 
 # ---------------------------------------------------------------------------

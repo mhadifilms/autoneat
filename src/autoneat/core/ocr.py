@@ -14,8 +14,8 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from autoneat_lib.core.subprocess_utils import require_tool, resource_dir, run_proc
-from autoneat_lib.core.windows import activate_resolve
+from autoneat.core.subprocess_utils import require_tool, resource_dir, run_proc
+from autoneat.core.windows import activate_resolve
 
 
 def cache_base() -> Path:

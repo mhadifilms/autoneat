@@ -14,9 +14,8 @@ venv/
 *.swp
 *.swo
 
-# Bundled cliclick (downloaded by scripts/fetch_cliclick.sh —
-# distributed via Releases, not via git)
-plugin/autoneat_lib/resources/cliclick
+# Optional bundled cliclick binary
+src/autoneat/resources/cliclick
 
 # Run artifacts
 .cache/

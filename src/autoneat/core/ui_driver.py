@@ -12,8 +12,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from autoneat_lib.core import ocr, windows
-from autoneat_lib.core.subprocess_utils import require_tool, run_proc
+from autoneat.core import ocr, windows
+from autoneat.core.subprocess_utils import require_tool, run_proc
 
 
 # ---------------------------------------------------------------------------

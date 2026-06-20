@@ -1,10 +1,4 @@
-"""DaVinci Resolve helpers for timeline iteration and playhead control.
-
-Inside a Workflow Integration, Resolve injects ``resolve``/``project`` as
-script-level globals — there's no DaVinciResolveScript bootstrap to do.
-Every helper in this module takes those handles as arguments instead of
-fetching them from the runtime.
-"""
+"""DaVinci Resolve helpers for timeline iteration and playhead control."""
 
 from __future__ import annotations
 
