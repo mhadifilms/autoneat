@@ -14,9 +14,6 @@ venv/
 *.swp
 *.swo
 
-# Optional bundled cliclick binary
-src/autoneat/resources/cliclick
-
 # Run artifacts
 .cache/
 last-run.json

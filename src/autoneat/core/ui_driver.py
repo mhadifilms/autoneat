@@ -1,4 +1,4 @@
-"""Vision OCR + cliclick state machine that drives Neat's Qt UI.
+"""Vision OCR + Quartz click state machine that drives Neat's Qt UI.
 
 This module is intentionally narrow: it knows how to read the current screen
 state from OCR text and how to click named buttons inside the Neat plugin
@@ -12,8 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from autoneat.core import ocr, windows
-from autoneat.core.subprocess_utils import require_tool, run_proc
+from autoneat.core import click, ocr, windows
 
 
 # ---------------------------------------------------------------------------
@@ -128,13 +127,8 @@ def locate_button(label: str, work_dir: Path, *, window: Dict[str, Any]) -> Tupl
 
 
 def _click_at(x: float, y: float) -> None:
-    cliclick = require_tool("cliclick")
     windows.activate_resolve(settle=0.25)
-    xi = int(round(float(x)))
-    yi = int(round(float(y)))
-    proc = run_proc([cliclick, f"m:{xi},{yi}", f"c:{xi},{yi}"], timeout=10)
-    if proc.returncode != 0:
-        raise RuntimeError(proc.stderr.strip() or proc.stdout.strip() or "cliclick failed")
+    click.click_at(float(x), float(y))
 
 
 def click_at_window_offset(window: Dict[str, Any], offset_x: float, offset_y: float) -> Tuple[float, float]:

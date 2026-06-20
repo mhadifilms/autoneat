@@ -9,8 +9,7 @@ for the two controls Neat does not expose: **Auto Profile** and **Apply**.
 ## Install
 
 ```bash
-python3 -m pip install git+https://github.com/mhadifilms/autoneat.git
-brew install cliclick
+python3 -m pip install autoneat
 ```
 
 DaVinci Resolve Studio, Neat Video Pro 6, and macOS Accessibility / Screen
