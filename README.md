@@ -3,8 +3,9 @@
 Standalone Neat Video Pro 6 Auto Profile automation for DaVinci Resolve.
 
 Neat Video has no public scripting API for Auto Profile. `autoneat` scripts the
-parts Resolve exposes, then uses macOS window automation plus Apple Vision OCR
-for the two controls Neat does not expose: **Auto Profile** and **Apply**.
+parts Resolve exposes, then uses macOS window automation, OCR, and learned
+OpenCV templates for the controls Neat does not expose: **Auto Profile** and
+**Apply**.
 
 ## Install
 
@@ -12,8 +13,8 @@ for the two controls Neat does not expose: **Auto Profile** and **Apply**.
 python3 -m pip install autoneat
 ```
 
-DaVinci Resolve Studio, Neat Video Pro 6, and macOS Accessibility / Screen
-Recording permissions are required. Run:
+DaVinci Resolve Studio, Neat Video Pro 6, macOS Accessibility / Screen
+Recording permissions, and Tesseract OCR are required. Run:
 
 ```bash
 autoneat doctor
@@ -24,25 +25,27 @@ autoneat doctor
 Run against the current Resolve project/timeline:
 
 ```bash
-autoneat profile --state artifacts/neat/state.json
+autoneat profile
 ```
 
 Run against a specific project/timeline and shot filter:
 
 ```bash
 autoneat profile \
-  --project "My Show" \
-  --timeline "My Show_Neat" \
-  --shot-ids 001,002,003 \
-  --state artifacts/neat/state.json
+  --shot-ids 001 002 003 \
+  --continue \
+  --retry-failed
 ```
 
 Important options:
 
 - `--continue` resumes from the state JSON.
 - `--retry-failed` retries previously failed clips when resuming.
-- `--all-tracks` processes all video tracks instead of `--track 1`.
-- `--no-color-wrap` skips the ACES/HDR ColorSpaceTransform wrapper.
+- `--all-video-tracks` processes all video tracks instead of `--track 1`.
+- `--fresh-neat` adds a fresh Neat node instead of reusing one.
+- `--reset` deletes existing Neat nodes and rebuilds from scratch.
+- `--color-wrap` enables the HDR/linear ColorSpaceTransform wrapper.
+- `--no-templates` disables learned OpenCV templates and uses OCR only.
 - `--json` prints the final summary object after the live log.
 
 ## Python API

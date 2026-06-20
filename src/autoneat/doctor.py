@@ -7,7 +7,7 @@ import shutil
 from typing import Iterable
 
 
-REQUIRED_TOOLS = ("osascript", "screencapture", "sips", "swift")
+REQUIRED_TOOLS = ("osascript", "screencapture", "sips", "tesseract")
 
 
 def check_environment() -> list[tuple[str, bool, str]]:
@@ -28,6 +28,13 @@ def check_environment() -> list[tuple[str, bool, str]]:
         rows.append(("Quartz", True, "importable"))
     except ImportError as exc:
         rows.append(("Quartz", False, str(exc)))
+    try:
+        import cv2  # noqa: F401
+        import numpy  # noqa: F401
+
+        rows.append(("OpenCV", True, "importable"))
+    except ImportError as exc:
+        rows.append(("OpenCV", False, str(exc)))
     return rows
 
 

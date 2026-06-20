@@ -1,35 +1,37 @@
-from pathlib import Path
-
-from autoneat.cli import _parse_shot_ids, build_parser
-
-
-def test_parse_shot_ids_accepts_spaces_and_commas():
-    assert _parse_shot_ids("001, 002 003") == ["001", "002", "003"]
+from autoneat.cli import build_parser
+from autoneat import runner
 
 
-def test_profile_parser_builds_namespace():
+def test_top_level_parser_keeps_doctor_command():
     parser = build_parser()
+    args = parser.parse_args(["doctor"])
+
+    assert args.command == "doctor"
+
+
+def test_profile_runner_accepts_toolkit_neat_flags():
+    parser = runner._build_parser()
     args = parser.parse_args(
         [
-            "profile",
-            "--project",
-            "Show",
-            "--timeline",
-            "Show_Neat",
             "--shot-ids",
-            "001,002",
-            "--all-tracks",
+            "001",
+            "002",
+            "--all-video-tracks",
             "--continue",
             "--retry-failed",
-            "--state",
-            "artifacts/neat/state.json",
+            "--reset",
+            "--color-wrap",
+            "--color-wrap-scale",
+            "0.25",
+            "--no-templates",
         ]
     )
 
-    assert args.command == "profile"
-    assert args.project == "Show"
-    assert args.timeline == "Show_Neat"
-    assert args.all_tracks is True
+    assert args.shot_ids == ["001", "002"]
+    assert args.all_video_tracks is True
     assert args.continue_run is True
     assert args.retry_failed is True
-    assert Path(args.state) == Path("artifacts/neat/state.json")
+    assert args.reset_neat is True
+    assert args.no_color_wrap is False
+    assert args.color_wrap_scale == 0.25
+    assert args.no_templates is True

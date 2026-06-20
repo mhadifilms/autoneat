@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "autoneat"
-version = "0.2.2"
+version = "0.3.0"
 description = "Standalone Neat Video Auto Profile automation for DaVinci Resolve"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -12,6 +12,8 @@ license = "MIT"
 authors = [{ name = "Mohammad Hadi" }]
 dependencies = [
   "dvr>=1.1",
+  "numpy>=2.1,<3.0",
+  "opencv-python>=4.8.0",
   "pyobjc-framework-Quartz>=11.0; platform_system == 'Darwin'",
 ]
 

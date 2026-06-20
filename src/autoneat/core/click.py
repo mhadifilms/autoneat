@@ -29,3 +29,31 @@ def click_at(x: float, y: float) -> None:
         event = CGEventCreateMouseEvent(None, event_type, point, kCGMouseButtonLeft)
         CGEventPost(kCGHIDEventTap, event)
         time.sleep(0.04)
+
+
+def press_key(key: str) -> None:
+    """Press a small set of control keys through Quartz events."""
+    keycodes = {
+        "escape": 53,
+        "return": 36,
+    }
+    code = keycodes.get(key.lower())
+    if code is None:
+        raise ValueError(f"Unsupported key for Quartz automation: {key!r}")
+    try:
+        from Quartz import (  # type: ignore[import-not-found]
+            CGEventCreateKeyboardEvent,
+            CGEventPost,
+            kCGHIDEventTap,
+        )
+    except ImportError as exc:
+        raise RuntimeError(
+            "Quartz keyboard automation is unavailable. Install autoneat with "
+            "its macOS dependencies, then grant the running terminal "
+            "Accessibility permission in System Settings."
+        ) from exc
+
+    for down in (True, False):
+        event = CGEventCreateKeyboardEvent(None, code, down)
+        CGEventPost(kCGHIDEventTap, event)
+        time.sleep(0.04)
