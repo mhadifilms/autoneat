@@ -1140,8 +1140,8 @@ class NeatDriver:
             self.rec.add(f"{tag or label}:locate-miss {str(exc)[:60]}")
             return False
 
-    def _retry_open_from_inspector(self, *, tag: str) -> bool:
-        """Open Neat again when the visible Inspector click did not open it."""
+    def _open_prepare_profile(self, *, tag: str) -> bool:
+        """Open Neat from the selected node, preferring the OFX API helper."""
         cfg = self.cfg
         if self._open_attempts >= cfg.max_open_attempts:
             raise RuntimeError("Clicked 'Prepare Noise Profile' but Neat's window never opened")
@@ -1154,8 +1154,12 @@ class NeatDriver:
         if not ok:
             self._click("prepare-profile", tag=f"{tag}-geometry")
         self._open_attempts += 1
-        time.sleep(max(cfg.step_delay, 0.6))
+        time.sleep(max(cfg.step_delay, 0.25 if ok else 0.6))
         return True
+
+    def _retry_open_from_inspector(self, *, tag: str) -> bool:
+        """Open Neat again when the selected node did not open it."""
+        return self._open_prepare_profile(tag=tag)
 
     def neat_window_present(self) -> bool:
         """True if a Neat *editor* window currently exists (AX/window probe).
@@ -1758,8 +1762,7 @@ def _process_clip(
                 rec.add(f"media-range:{media_range}")
 
             # Adaptively open + drive Neat to a finished, applied, closed state.
-            driver._click("prepare-profile")
-            time.sleep(max(cfg.step_delay, 0.3))
+            driver._open_prepare_profile(tag="prepare-profile")
             driver.drive(prepare_clicked=True)
             opened = {"ok": True, "stdout": added.get("stdout", "")}
 

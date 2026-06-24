@@ -532,12 +532,40 @@ def _ocr_screen(work_dir: Path, *, scale: int = 2) -> List[Dict[str, Any]]:
 
 def _text_rows(rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
     filtered: List[Dict[str, Any]] = []
+    notification_tokens = {
+        "managed",
+        "login",
+        "items",
+        "added",
+        "background",
+        "extensions",
+        "notifications",
+    }
     for row in rows:
         text = str(row.get("text") or "").strip()
         if not text:
             continue
         if "\n" in text or "\t" in text or len(text) > 80:
             continue
+        try:
+            scale = int(row.get("_scale") or 1)
+            offset_x = int(row.get("_offset_x") or 0)
+            offset_y = int(row.get("_offset_y") or 0)
+            screen_w = int(row.get("_screen_width") or 0)
+            screen_h = int(row.get("_screen_height") or 0)
+            left = offset_x + float(row.get("left") or 0) / scale
+            top = offset_y + float(row.get("top") or 0) / scale
+            normalized = text.lower().strip(".,:;()[]{}'\"|>").replace("-", "")
+            if (
+                screen_w
+                and screen_h
+                and left > screen_w * 0.45
+                and top < screen_h * 0.20
+                and normalized in notification_tokens
+            ):
+                continue
+        except Exception:
+            pass
         filtered.append(row)
     return filtered
 
@@ -1079,7 +1107,7 @@ def _click_ocr_button(label: str, work_dir: Path, *, window: Dict[str, Any]) -> 
 # so a persistent spinner can't hang the locate.
 _STABLE_TOLERANCE = 0.004
 _STABLE_SLEEP = 0.2
-_STABLE_MAX_FRAMES = 4
+_STABLE_MAX_FRAMES = 2
 
 _REGION_CROPS: Dict[str, Tuple[float, float, float, float]] = {
     # Right-edge Fusion Inspector strip ("Prepare Noise Profile" button).
@@ -1470,12 +1498,40 @@ class Locator:
         ``method`` is ``"template:<score>"``, ``"window"``, or ``"fullscreen"``.
         Raises ``RuntimeError`` only if every strategy misses.
         """
-        # Authoritative frame: wait for the screen to settle so we never locate
-        # against a mid-animation render.
-        frame: Optional[Path] = self._capture_stable(label)
-        size = neat_vision.image_size(frame) if frame is not None else None
+        frame: Optional[Path] = None
+        size: Optional[Tuple[int, int]] = None
 
-        # 1. Deterministic template match (no-op until a template is learned).
+        # Fast path: if a verified template exists for this resolution, one
+        # screenshot is enough. Avoid the temporal-stability gate and OCR cost
+        # on learned controls; fall back below if the template misses.
+        if self.learn:
+            quick = self._next_frame(label)
+            try:
+                _capture_screen(quick)
+                quick_size = neat_vision.image_size(quick)
+            except Exception:
+                quick_size = None
+            if quick_size is not None and neat_vision.has_template(
+                label, quick_size[0], quick_size[1]
+            ):
+                region = self._region(label, quick_size[0], quick_size[1])
+                match = neat_vision.match_template(
+                    label, quick, quick_size[0], quick_size[1], region=region
+                )
+                if match is not None:
+                    mx, my, score = match
+                    self._used_templates.append((label, quick_size[0], quick_size[1]))
+                    _click_at_quartz(mx, my)
+                    return (mx, my), f"template:{score:.2f}"
+            frame = quick
+            size = quick_size
+
+        # Authoritative frame for OCR/template fallback: wait briefly for the
+        # screen to settle so we never locate against a mid-animation render.
+        if frame is None or size is None:
+            frame = self._capture_stable(label)
+            size = neat_vision.image_size(frame) if frame is not None else None
+
         if frame is not None and size is not None:
             region = self._region(label, size[0], size[1])
             match = neat_vision.match_template(label, frame, size[0], size[1], region=region)
