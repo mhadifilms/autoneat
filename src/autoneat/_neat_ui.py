@@ -1188,7 +1188,7 @@ def fast_control_point(label: str, work_dir: Path) -> Optional[Tuple[float, floa
     fractions = {
         "prepare-profile": (0.891, 0.216),
         "auto-profile": (0.203, 0.154),
-        "apply": (0.792, 0.971),
+        "apply": (0.792, 0.894),
     }
     frac = fractions.get(label)
     if frac is None:
