@@ -1141,11 +1141,18 @@ class NeatDriver:
             return False
 
     def _retry_open_from_inspector(self, *, tag: str) -> bool:
-        """Click the visible Fusion Inspector button again when Neat did not open."""
+        """Open Neat again when the visible Inspector click did not open it."""
         cfg = self.cfg
         if self._open_attempts >= cfg.max_open_attempts:
             raise RuntimeError("Clicked 'Prepare Noise Profile' but Neat's window never opened")
-        self._click("prepare-profile", tag=tag)
+        ok, detail = neat_ui.open_prepare_profile_via_api(
+            self.work_dir,
+            timeout=max(cfg.open_timeout, 6.0),
+            target_env=self.target_env,
+        )
+        self.rec.add(f"{tag}:{detail}")
+        if not ok:
+            self._click("prepare-profile", tag=f"{tag}-geometry")
         self._open_attempts += 1
         time.sleep(max(cfg.step_delay, 0.6))
         return True
