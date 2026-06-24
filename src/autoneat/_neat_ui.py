@@ -1887,7 +1887,7 @@ def locate_information_ok_button(work_dir: Path) -> Optional[Tuple[float, float]
     image = Image.open(raw).convert("RGB")
     width, height = image.size
     x0, x1 = int(width * 0.20), int(width * 0.80)
-    y0, y1 = int(height * 0.15), int(height * 0.45)
+    y0, y1 = int(height * 0.15), int(height * 0.70)
     visited: set[Tuple[int, int]] = set()
     best: Optional[Tuple[int, int, int, int, int]] = None
     pix = image.load()
@@ -1939,7 +1939,12 @@ def locate_information_ok_button(work_dir: Path) -> Optional[Tuple[float, float]
                 best = candidate
 
     if best is None:
-        return None
+        ocr_point = locate_modal_button(work_dir, "ok")
+        if ocr_point is None:
+            return None
+        # The OCR point on Neat's Information dialog has proven to sit on the
+        # lower button edge on render nodes. Shift into the button body.
+        return (float(ocr_point[0]), float(max(0.0, ocr_point[1] - 22.0)))
     _, left, top, right, bottom = best
     del left, top
     return (float(right - 31), float(bottom - 28))
