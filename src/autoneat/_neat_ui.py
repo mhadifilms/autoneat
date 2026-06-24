@@ -1187,7 +1187,6 @@ def fast_control_point(label: str, work_dir: Path) -> Optional[Tuple[float, floa
     """Known stable Neat/Resolve control centers on the render-node layout."""
     fractions = {
         "prepare-profile": (0.891, 0.216),
-        "auto-profile": (0.203, 0.154),
     }
     frac = fractions.get(label)
     if frac is None:
