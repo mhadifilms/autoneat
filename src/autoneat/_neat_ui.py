@@ -1634,13 +1634,14 @@ def open_prepare_profile_via_api(
             except Exception:
                 state = "unknown"
             if state == "information-dialog":
-                point = locate_information_ok_button(work_dir) or locate_modal_button(work_dir, "ok")
+                point = locate_modal_button(work_dir, "ok") or locate_information_ok_button(work_dir)
                 if point is not None:
                     _click_at_quartz(point[0], point[1])
                     dismissed.append("information-dialog")
                 else:
                     _press_return()
                     dismissed.append("information-dialog:return")
+                _press_return()
                 time.sleep(0.4)
                 continue
             if state == "confirm-build-profile":
@@ -1941,7 +1942,7 @@ def locate_information_ok_button(work_dir: Path) -> Optional[Tuple[float, float]
         return None
     _, left, top, right, bottom = best
     del left, top
-    return (float(right - 31), float(bottom - 10))
+    return (float(right - 31), float(bottom - 28))
 
 
 def locate_confirm_continue_button(work_dir: Path) -> Optional[Tuple[float, float]]:
