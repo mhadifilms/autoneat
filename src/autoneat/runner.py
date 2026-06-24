@@ -1519,6 +1519,7 @@ class NeatDriver:
             self._auto_profile_baseline = None
             self._click("auto-profile", editor=True)
             self._profile_clicked_at = time.time()
+            self._require_observed_profile = True
             self._profiled_streak = 0
             self._first_profiled_at = None
             time.sleep(max(cfg.profile_wait, cfg.step_delay))
