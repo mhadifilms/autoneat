@@ -1143,6 +1143,7 @@ class NeatDriver:
     def _open_prepare_profile(self, *, tag: str) -> bool:
         """Open Neat from the selected node, preferring the OFX API helper."""
         cfg = self.cfg
+        self._open_attempts = getattr(self, "_open_attempts", 0)
         if self._open_attempts >= cfg.max_open_attempts:
             raise RuntimeError("Clicked 'Prepare Noise Profile' but Neat's window never opened")
         ok, detail = neat_ui.open_prepare_profile_via_api(
