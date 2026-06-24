@@ -1568,6 +1568,7 @@ def open_prepare_profile_via_api(
         env=env,
     )
     start = time.time()
+    dismissed: List[str] = []
     try:
         while time.time() - start < timeout:
             # Do not use AX/JXA window enumeration here. Neat's modal can make
@@ -1578,16 +1579,31 @@ def open_prepare_profile_via_api(
                 state, _text, _rows = _read_screen_state(work_dir)
             except Exception:
                 state = "unknown"
-            if state in (
-                "information-dialog",
-                "confirm-build-profile",
-                "confirm-small-area",
-                "demo-splash",
-                "preparing-input",
-                "editor-unprofiled",
-                "editor-profiled",
-                "editor",
-            ):
+            if state == "information-dialog":
+                point = locate_information_ok_button(work_dir) or locate_modal_button(work_dir, "ok")
+                if point is not None:
+                    _click_at_quartz(point[0], point[1])
+                    dismissed.append("information-dialog")
+                else:
+                    _press_return()
+                    dismissed.append("information-dialog:return")
+                time.sleep(0.4)
+                continue
+            if state == "confirm-build-profile":
+                point = locate_confirm_button(work_dir, "continue") or locate_confirm_continue_button(work_dir)
+                if point is not None:
+                    _click_at_quartz(point[0], point[1])
+                    dismissed.append("confirm-build-profile")
+                    time.sleep(0.4)
+                    continue
+            if state == "confirm-small-area":
+                point = locate_modal_button(work_dir, "use")
+                if point is not None:
+                    _click_at_quartz(point[0], point[1])
+                    dismissed.append("confirm-small-area")
+                    time.sleep(0.4)
+                    continue
+            if state in ("preparing-input", "editor-unprofiled", "editor-profiled", "editor"):
                 try:
                     helper.terminate()
                     helper.wait(timeout=1)
@@ -1597,7 +1613,8 @@ def open_prepare_profile_via_api(
                     except Exception:
                         pass
                 kind = "editor" if state.startswith("editor") else state
-                return True, f"api-{kind}:{time.time() - start:.1f}s"
+                suffix = f";dismissed={','.join(dismissed)}" if dismissed else ""
+                return True, f"api-{kind}:{time.time() - start:.1f}s{suffix}"
             if helper.poll() is not None:
                 stdout, stderr = helper.communicate(timeout=1)
                 detail = (stderr.strip() or stdout.strip() or f"exit {helper.returncode}")[:120]
