@@ -1227,15 +1227,11 @@ class NeatDriver:
             self._information_dialog_attempts += 1
             if self._information_dialog_attempts > 4:
                 raise RuntimeError("Neat information modal did not dismiss after 4 clicks")
-            point = neat_ui.locate_information_ok_button(self.work_dir)
-            if point is None:
-                point = neat_ui.locate_modal_button(self.work_dir, "ok")
-            if point is not None:
-                neat_ui._click_at_quartz(point[0], point[1])
-                self.rec.add(f"info-ok:pre-apply:{round(point[0])},{round(point[1])}")
+            detail = neat_ui.dismiss_information_dialog(self.work_dir)
+            if detail is not None:
+                self.rec.add(f"info-ok:pre-apply:{detail}")
             else:
                 self._click("ok", tag="info-ok")
-            neat_ui._press_return()
         else:
             return False
 
@@ -1340,17 +1336,11 @@ class NeatDriver:
                 self._information_dialog_attempts += 1
                 if self._information_dialog_attempts > 4:
                     raise RuntimeError("Neat information modal did not dismiss after 4 clicks")
-                point = neat_ui.locate_information_ok_button(self.work_dir)
-                method = "geometry"
-                if point is None:
-                    point = neat_ui.locate_modal_button(self.work_dir, "ok")
-                    method = "modal"
-                if point is not None:
-                    neat_ui._click_at_quartz(point[0], point[1])
-                    self.rec.add(f"info-ok:{method}:{round(point[0])},{round(point[1])}")
+                detail = neat_ui.dismiss_information_dialog(self.work_dir)
+                if detail is not None:
+                    self.rec.add(f"info-ok:{detail}")
                 else:
                     self._click("ok", tag="info-ok")
-                neat_ui._press_return()
                 time.sleep(cfg.step_delay)
 
             elif state == "confirm-small-area":
@@ -1623,17 +1613,11 @@ class NeatDriver:
                 return True
 
             if state == "information-dialog":
-                point = neat_ui.locate_information_ok_button(self.work_dir)
-                if point is not None:
-                    neat_ui._click_at_quartz(point[0], point[1])
-                    self.rec.add(f"abort-ok:geometry:{round(point[0])},{round(point[1])}")
+                detail = neat_ui.dismiss_information_dialog(self.work_dir)
+                if detail is not None:
+                    self.rec.add(f"abort-ok:{detail}")
                 else:
-                    point = neat_ui.locate_modal_button(self.work_dir, "ok")
-                    if point is not None:
-                        neat_ui._click_at_quartz(point[0], point[1])
-                        self.rec.add(f"abort-ok:modal:{round(point[0])},{round(point[1])}")
-                    else:
-                        self._try_click("ok", tag="abort-ok")
+                    self._try_click("ok", tag="abort-ok")
                 neat_ui._press_return()
             elif state == "demo-splash":
                 self._try_click("continue", tag="abort-continue")

@@ -1634,14 +1634,12 @@ def open_prepare_profile_via_api(
             except Exception:
                 state = "unknown"
             if state == "information-dialog":
-                point = locate_information_ok_button(work_dir) or locate_modal_button(work_dir, "ok")
-                if point is not None:
-                    _click_at_quartz(point[0], point[1])
-                    dismissed.append("information-dialog")
+                detail = dismiss_information_dialog(work_dir)
+                if detail is not None:
+                    dismissed.append(f"information-dialog:{detail}")
                 else:
                     _press_return()
                     dismissed.append("information-dialog:return")
-                _press_return()
                 time.sleep(0.4)
                 continue
             if state == "confirm-build-profile":
@@ -1948,6 +1946,57 @@ def locate_information_ok_button(work_dir: Path) -> Optional[Tuple[float, float]
     _, left, top, right, bottom = best
     del left, top
     return (float(right - 31), float(bottom - 28))
+
+
+def dismiss_information_dialog(work_dir: Path) -> Optional[str]:
+    """Dismiss Neat's Information modal and confirm it disappeared.
+
+    Neat's OK hit target varies between modal layouts and OCR can lock onto the
+    button edge. Try a small lower-right sweep around the geometry/OCR anchors
+    and verify the next screen state before declaring success.
+    """
+    anchors: List[Tuple[str, Tuple[float, float]]] = []
+    geom = locate_information_ok_button(work_dir)
+    if geom is not None:
+        anchors.append(("geometry", geom))
+    ocr = locate_modal_button(work_dir, "ok")
+    if ocr is not None:
+        anchors.append(("modal", ocr))
+
+    offsets = (
+        (0.0, 0.0),
+        (-24.0, 0.0),
+        (-48.0, 0.0),
+        (-72.0, 0.0),
+        (0.0, -18.0),
+        (-24.0, -18.0),
+        (-48.0, -18.0),
+        (-72.0, -18.0),
+        (-96.0, -18.0),
+        (0.0, -34.0),
+        (-48.0, -34.0),
+        (-96.0, -34.0),
+    )
+    tried: set[Tuple[int, int]] = set()
+
+    for method, point in anchors:
+        for dx, dy in offsets:
+            x = max(0.0, point[0] + dx)
+            y = max(0.0, point[1] + dy)
+            key = (round(x), round(y))
+            if key in tried:
+                continue
+            tried.add(key)
+            _click_at_quartz(x, y)
+            _press_return()
+            time.sleep(0.2)
+            try:
+                state, _text, _rows = _read_screen_state(work_dir)
+            except Exception:
+                state = "unknown"
+            if state != "information-dialog":
+                return f"{method}:{round(x)},{round(y)}"
+    return None
 
 
 def locate_confirm_continue_button(work_dir: Path) -> Optional[Tuple[float, float]]:
