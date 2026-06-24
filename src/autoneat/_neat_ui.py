@@ -1634,7 +1634,7 @@ def open_prepare_profile_via_api(
             except Exception:
                 state = "unknown"
             if state == "information-dialog":
-                point = locate_modal_button(work_dir, "ok") or locate_information_ok_button(work_dir)
+                point = locate_information_ok_button(work_dir) or locate_modal_button(work_dir, "ok")
                 if point is not None:
                     _click_at_quartz(point[0], point[1])
                     dismissed.append("information-dialog")

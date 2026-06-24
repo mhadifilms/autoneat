@@ -1227,9 +1227,9 @@ class NeatDriver:
             self._information_dialog_attempts += 1
             if self._information_dialog_attempts > 4:
                 raise RuntimeError("Neat information modal did not dismiss after 4 clicks")
-            point = neat_ui.locate_modal_button(self.work_dir, "ok")
+            point = neat_ui.locate_information_ok_button(self.work_dir)
             if point is None:
-                point = neat_ui.locate_information_ok_button(self.work_dir)
+                point = neat_ui.locate_modal_button(self.work_dir, "ok")
             if point is not None:
                 neat_ui._click_at_quartz(point[0], point[1])
                 self.rec.add(f"info-ok:pre-apply:{round(point[0])},{round(point[1])}")
@@ -1340,11 +1340,11 @@ class NeatDriver:
                 self._information_dialog_attempts += 1
                 if self._information_dialog_attempts > 4:
                     raise RuntimeError("Neat information modal did not dismiss after 4 clicks")
-                point = neat_ui.locate_modal_button(self.work_dir, "ok")
-                method = "modal"
+                point = neat_ui.locate_information_ok_button(self.work_dir)
+                method = "geometry"
                 if point is None:
-                    point = neat_ui.locate_information_ok_button(self.work_dir)
-                    method = "geometry"
+                    point = neat_ui.locate_modal_button(self.work_dir, "ok")
+                    method = "modal"
                 if point is not None:
                     neat_ui._click_at_quartz(point[0], point[1])
                     self.rec.add(f"info-ok:{method}:{round(point[0])},{round(point[1])}")
@@ -1623,15 +1623,15 @@ class NeatDriver:
                 return True
 
             if state == "information-dialog":
-                point = neat_ui.locate_modal_button(self.work_dir, "ok")
+                point = neat_ui.locate_information_ok_button(self.work_dir)
                 if point is not None:
                     neat_ui._click_at_quartz(point[0], point[1])
-                    self.rec.add(f"abort-ok:modal:{round(point[0])},{round(point[1])}")
+                    self.rec.add(f"abort-ok:geometry:{round(point[0])},{round(point[1])}")
                 else:
-                    point = neat_ui.locate_information_ok_button(self.work_dir)
+                    point = neat_ui.locate_modal_button(self.work_dir, "ok")
                     if point is not None:
                         neat_ui._click_at_quartz(point[0], point[1])
-                        self.rec.add(f"abort-ok:geometry:{round(point[0])},{round(point[1])}")
+                        self.rec.add(f"abort-ok:modal:{round(point[0])},{round(point[1])}")
                     else:
                         self._try_click("ok", tag="abort-ok")
                 neat_ui._press_return()
