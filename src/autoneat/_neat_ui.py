@@ -890,6 +890,8 @@ def editor_profile_ready(work_dir: Path) -> Optional[bool]:
     because the full-screen OCR pass reads only the large menu-bar text and
     misses the small grey "Noise Level"/"profile not ready" strings — the root
     cause of the editor-profiled/​unprofiled mis-classification."""
+    if _neat_editor_window() is None:
+        return None
     try:
         raw = work_dir / "profile-probe.png"
         _capture_screen(raw)
