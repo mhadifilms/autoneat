@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "autoneat"
-version = "0.3.15"
+version = "0.3.16"
 description = "Standalone Neat Video Auto Profile automation for DaVinci Resolve"
 readme = "README.md"
 requires-python = ">=3.10"

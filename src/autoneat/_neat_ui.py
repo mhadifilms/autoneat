@@ -578,6 +578,33 @@ def _screen_text(rows: Sequence[Dict[str, Any]]) -> str:
     return " ".join(_word_text(row) for row in _text_rows(rows)).lower()
 
 
+def _is_neat_information_text(text: str) -> bool:
+    normalized = text.lower()
+    overlay_tokens = (
+        "doppler",
+        "managed login items",
+        "system private window picker",
+        "window picker",
+        "directly access",
+        "access your screen",
+        "login items & extensions",
+    )
+    if any(token in normalized for token in overlay_tokens):
+        return False
+    if "information" in normalized and any(
+        token in normalized
+        for token in (
+            "dynamic range",
+            "input data gain",
+            "not selected",
+            "before opening",
+            "do not show again",
+        )
+    ):
+        return True
+    return any(token in normalized for token in _MODAL_INFO_TOKENS)
+
+
 def _screen_size_from_rows(rows: Sequence[Dict[str, Any]]) -> Tuple[int, int]:
     for row in rows:
         width = int(row.get("_screen_width") or 0)
@@ -775,18 +802,7 @@ def _screen_state_from_text(text: str) -> str:
     # Neat's modal "Information" dialog (e.g. the Input-Data-Gain / dynamic-range
     # notice, or the "select a frame first" notice) sits on top of everything
     # and must be dismissed before the editor underneath is usable.
-    if "information" in text and any(
-        token in text
-        for token in (
-            "dynamic range",
-            "input data gain",
-            "not selected",
-            "before opening",
-            "do not show again",
-        )
-    ):
-        return "information-dialog"
-    if "not selected" in text or "before opening neat video" in text:
+    if _is_neat_information_text(text):
         return "information-dialog"
     # Neat's "Confirm" modal after Auto Profile when the auto-selected sample
     # area is below the recommended 128x128 — sits on top of the editor, so it
@@ -856,7 +872,7 @@ def _read_screen_state(work_dir: Path) -> Tuple[str, str, List[Dict[str, Any]]]:
     if state in ("editor-unprofiled", "editor-profiled", "editor", "unknown", "inspector-prepare"):
         band_rows = _ocr_modal_band(work_dir)
         band_text = _screen_text(band_rows)
-        if any(tok in band_text for tok in _MODAL_INFO_TOKENS):
+        if _is_neat_information_text(band_text):
             return "information-dialog", band_text[:500], band_rows
         if any(tok in band_text for tok in _MODAL_CONFIRM_TOKENS):
             return "confirm-build-profile", band_text[:500], band_rows
@@ -1159,6 +1175,24 @@ def _input_gamma_button_point() -> Optional[Tuple[float, float]]:
     # screen absolute, and serves only as the first-run bootstrap before
     # templates.
     return _window_point(window, 52, -14)
+
+
+def _editor_control_geometry_point(label: str) -> Optional[Tuple[float, float]]:
+    """Return a first-run bootstrap point for stable Neat editor controls.
+
+    Template/OCR remains the preferred path. This geometry fallback is only used
+    when no learned template exists yet, and keeps transient macOS banners from
+    turning a known toolbar click into an expensive OCR failure.
+    """
+    window = _neat_editor_window()
+    if window is not None:
+        if label == "auto-profile":
+            return _window_point(window, 160, 82)
+        if label == "apply":
+            return _window_fraction_point(window, 0.792, 0.894)
+        if label == "cancel":
+            return _window_fraction_point(window, 0.725, 0.894)
+    return None
 
 
 def _screen_size(work_dir: Path, *, name: str) -> Tuple[int, int]:
@@ -1527,6 +1561,12 @@ class Locator:
                     return (mx, my), f"template:{score:.2f}"
             frame = quick
             size = quick_size
+
+        if editor and label in {"auto-profile", "apply", "cancel"}:
+            point = _editor_control_geometry_point(label)
+            if point is not None:
+                _click_at_quartz(point[0], point[1])
+                return point, "window-geometry"
 
         # Authoritative frame for OCR/template fallback: wait briefly for the
         # screen to settle so we never locate against a mid-animation render.
