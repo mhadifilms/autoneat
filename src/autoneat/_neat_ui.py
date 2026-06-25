@@ -1948,6 +1948,47 @@ def locate_information_ok_button(work_dir: Path) -> Optional[Tuple[float, float]
     return (float(right - 31), float(bottom - 28))
 
 
+def _click_ok_button_via_ax() -> bool:
+    """Click a visible Resolve/Neat OK button through macOS Accessibility."""
+    script = f"""
+const se = Application("System Events");
+const proc = se.processes.byName({json.dumps(RESOLVE_PROCESS)});
+if (!proc.exists()) {{
+  JSON.stringify({{ok: false, clicked: false, error: "Resolve process not found"}});
+}} else {{
+  try {{ proc.frontmost = true; }} catch (err) {{}}
+  function text(fn) {{
+    try {{
+      const value = fn();
+      return value === null || value === undefined ? "" : String(value);
+    }} catch (err) {{ return ""; }}
+  }}
+  let clicked = false;
+  const wins = proc.windows();
+  for (let i = 0; i < wins.length && !clicked; i++) {{
+    let buttons = [];
+    try {{ buttons = wins[i].buttons(); }} catch (err) {{ buttons = []; }}
+    for (let j = 0; j < buttons.length; j++) {{
+      const label = (
+        text(() => buttons[j].name()) + " " +
+        text(() => buttons[j].title()) + " " +
+        text(() => buttons[j].description())
+      ).toLowerCase();
+      if (label.split(/\\s+/).includes("ok")) {{
+        try {{ buttons[j].click(); clicked = true; break; }} catch (err) {{}}
+      }}
+    }}
+  }}
+  JSON.stringify({{ok: true, clicked}});
+}}
+"""
+    try:
+        data = _run_jxa(script, timeout=2.0)
+    except Exception:
+        return False
+    return bool(data.get("clicked"))
+
+
 def dismiss_information_dialog(work_dir: Path) -> Optional[str]:
     """Dismiss Neat's Information modal and confirm it disappeared.
 
@@ -1955,6 +1996,15 @@ def dismiss_information_dialog(work_dir: Path) -> Optional[str]:
     button edge. Try a small lower-right sweep around the geometry/OCR anchors
     and verify the next screen state before declaring success.
     """
+    if _click_ok_button_via_ax():
+        time.sleep(0.2)
+        try:
+            state, _text, _rows = _read_screen_state(work_dir)
+        except Exception:
+            state = "unknown"
+        if state != "information-dialog":
+            return "ax-ok"
+
     anchors: List[Tuple[str, Tuple[float, float]]] = []
     geom = locate_information_ok_button(work_dir)
     if geom is not None:
@@ -1965,17 +2015,11 @@ def dismiss_information_dialog(work_dir: Path) -> Optional[str]:
 
     offsets = (
         (0.0, 0.0),
-        (-24.0, 0.0),
-        (-48.0, 0.0),
-        (-72.0, 0.0),
-        (0.0, -18.0),
-        (-24.0, -18.0),
-        (-48.0, -18.0),
-        (-72.0, -18.0),
-        (-96.0, -18.0),
-        (0.0, -34.0),
-        (-48.0, -34.0),
-        (-96.0, -34.0),
+        (-32.0, -10.0),
+        (-64.0, -10.0),
+        (-96.0, -10.0),
+        (-32.0, -30.0),
+        (-96.0, -30.0),
     )
     tried: set[Tuple[int, int]] = set()
 
