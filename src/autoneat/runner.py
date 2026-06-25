@@ -1334,13 +1334,20 @@ class NeatDriver:
                 # Neat's "select a frame first" / dynamic-range notice. Dismissing
                 # it lets Neat auto-pick frames and continue.
                 self._information_dialog_attempts += 1
-                if self._information_dialog_attempts > 4:
-                    raise RuntimeError("Neat information modal did not dismiss after 4 clicks")
+                self.rec.add(f"info-text:{text[:120]!r}")
+                if self._information_dialog_attempts > 2:
+                    raise RuntimeError("Neat information modal did not dismiss after 2 attempts")
                 detail = neat_ui.dismiss_information_dialog(self.work_dir)
                 if detail is not None:
                     self.rec.add(f"info-ok:{detail}")
                 else:
-                    self._click("ok", tag="info-ok")
+                    ready = neat_ui.editor_profile_ready(self.work_dir)
+                    if ready is not None or self.neat_window_present():
+                        drive_state = "editor-profiled" if ready else "editor-unprofiled"
+                        self.rec.add(f"info-bypass:{drive_state}")
+                        self._drive_editor(self._editor_state_for_drive(drive_state))
+                    else:
+                        self._click("ok", tag="info-ok")
                 time.sleep(cfg.step_delay)
 
             elif state == "confirm-small-area":
