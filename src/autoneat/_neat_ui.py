@@ -2013,33 +2013,24 @@ def dismiss_information_dialog(work_dir: Path) -> Optional[str]:
     if ocr is not None:
         anchors.append(("modal", ocr))
 
-    offsets = (
-        (0.0, 0.0),
-        (-32.0, -10.0),
-        (-64.0, -10.0),
-        (-96.0, -10.0),
-        (-32.0, -30.0),
-        (-96.0, -30.0),
-    )
-    tried: set[Tuple[int, int]] = set()
-
+    # Known Neat information dialogs place OK in the modal's lower-right action
+    # row. Sweep that area quickly; the modal consumes clicks until it closes,
+    # and these points do not overlap Neat's destructive Apply button.
+    _activate_resolve(settle=0.15)
     for method, point in anchors:
-        for dx, dy in offsets:
-            x = max(0.0, point[0] + dx)
-            y = max(0.0, point[1] + dy)
-            key = (round(x), round(y))
-            if key in tried:
-                continue
-            tried.add(key)
-            _click_at_quartz(x, y)
-            _press_return()
-            time.sleep(0.2)
-            try:
-                state, _text, _rows = _read_screen_state(work_dir)
-            except Exception:
-                state = "unknown"
-            if state != "information-dialog":
-                return f"{method}:{round(x)},{round(y)}"
+        del method
+        for dx in (0.0, -32.0, -64.0, -96.0, -128.0, -160.0):
+            for dy in (0.0, -18.0, -36.0, 18.0):
+                click.click_at(max(0.0, point[0] + dx), max(0.0, point[1] + dy))
+                time.sleep(0.03)
+    _press_return()
+    time.sleep(0.35)
+    try:
+        state, _text, _rows = _read_screen_state(work_dir)
+    except Exception:
+        state = "unknown"
+    if state != "information-dialog":
+        return "sweep"
     return None
 
 
