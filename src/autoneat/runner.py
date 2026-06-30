@@ -2441,6 +2441,22 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             print(f"[{idx}] {_clip_name(clip)} start={clip.GetStart()} dur={clip.GetDuration()}")
         return 0
 
+    # Session-scoped template cache. A control located via OCR on the first clip
+    # is saved and reused (fast template match) for the rest of THIS run, but a
+    # fresh process (restart) must NOT trust geometry learned in a previous
+    # session, where Resolve/Neat could have had a different window layout — a
+    # stale cross-session template silently mis-clicks. Clear once at batch start
+    # so each session re-learns from scratch on first use, then runs on the fast
+    # path; a per-clip failure still invalidates only the templates that clip
+    # relied on. Net contract: learn once per session, re-learn on restart/failure.
+    if not getattr(args, "no_templates", False) and neat_vision.available():
+        cleared = neat_vision.clear_templates()
+        if cleared:
+            print(
+                f"  templates: session reset ({cleared} cleared; re-learn via OCR on first use)",
+                flush=True,
+            )
+
     def _write_sidecar(results_so_far: List[Dict[str, Any]], *, partial: bool) -> None:
         succ = [r for r in results_so_far if r.get("ok")]
         fail = [r for r in results_so_far if not r.get("ok")]

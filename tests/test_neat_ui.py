@@ -3,6 +3,23 @@ from pathlib import Path
 import pytest
 
 from autoneat import _neat_ui as neat_ui
+from autoneat import _neat_vision as neat_vision
+
+
+def test_clear_templates_removes_learned_pngs(monkeypatch, tmp_path: Path):
+    """Session reset wipes learned templates so a restart re-learns via OCR."""
+    monkeypatch.setenv(neat_vision._TEMPLATE_DIR_ENV, str(tmp_path))
+    (tmp_path / "auto-profile@1920x1080.png").write_bytes(b"x")
+    (tmp_path / "apply@1920x1080.png").write_bytes(b"x")
+    (tmp_path / "keep.txt").write_text("not a template")
+
+    removed = neat_vision.clear_templates()
+
+    assert removed == 2
+    assert not list(tmp_path.glob("*.png"))
+    assert (tmp_path / "keep.txt").exists()
+    # Idempotent: clearing again removes nothing.
+    assert neat_vision.clear_templates() == 0
 
 
 def _row(text: str) -> dict:

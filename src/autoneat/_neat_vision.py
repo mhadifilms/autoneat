@@ -124,6 +124,31 @@ def delete_template(label: str, screen_w: int, screen_h: int) -> bool:
     return False
 
 
+def clear_templates() -> int:
+    """Delete every learned template so the next session re-learns via OCR.
+
+    Templates are a *session* cache, not a permanent record: a control located
+    once is reused for the rest of the run, but a fresh process (restart) must
+    not trust geometry learned in a previous session, where Resolve/Neat could
+    have been in a different window layout. Clearing at batch start makes
+    "learn once per session, re-learn on restart" the contract while keeping the
+    within-session fast path. Returns the number of templates removed.
+    Best-effort: unlink failures are skipped, never raised.
+    """
+    removed = 0
+    try:
+        root = _templates_root()
+    except Exception:
+        return 0
+    for path in root.glob("*.png"):
+        try:
+            path.unlink()
+            removed += 1
+        except Exception:
+            pass
+    return removed
+
+
 def image_size(frame_path: Path) -> Optional[Tuple[int, int]]:
     """Return ``(width, height)`` of an image on disk, or ``None`` on failure."""
     try:
