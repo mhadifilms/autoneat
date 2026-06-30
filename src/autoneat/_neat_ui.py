@@ -1622,16 +1622,34 @@ def open_prepare_profile_via_api(
     timeout: float = 6.0,
     target_env: Optional[Dict[str, str]] = None,
 ) -> Tuple[bool, str]:
-    """Trigger Neat's Prepare Noise Profile button through the OFX input.
+    """Open Neat's editor by pressing the ``Prepare Profile___`` OFX input.
 
-    Neat exposes the inspector button as input ID ``Prepare Profile___``. Calling
-    it blocks the scripting process until the plugin window closes, so this
-    launches a throwaway helper, waits only until the Neat editor window appears,
-    then terminates the blocked helper and lets the parent continue driving UI.
+    Neat exposes the inspector button as input ID ``Prepare Profile___``.
+    ``SetInput`` on it BLOCKS the scripting process for as long as the editor
+    window is open, and while it blocks macOS System Events stalls — so the
+    editor cannot be confirmed via AX, and its small chrome text OCRs poorly,
+    during the block. We work around that in two phases:
+
+      1. The helper writes a marker file the instant before it calls
+         ``SetInput`` and then blocks. We wait for that marker (proof the OFX
+         press fired), dismissing any Neat modal that pops via OCR meanwhile.
+      2. We release the helper (which leaves the editor open — interrupting the
+         blocked ``SetInput`` does NOT close the window) so System Events
+         recovers, then confirm the open editor with an AX window probe.
+
+    There is no click fallback: opening is done purely through the OFX input.
+    On a genuine failure the caller re-enters from ``inspector-prepare`` and
+    retries this, then fails loudly after ``max_open_attempts``.
     """
+    marker = work_dir / "prepare-profile-pressing.marker"
+    try:
+        marker.unlink()
+    except OSError:
+        pass
     env = os.environ.copy()
     if target_env:
         env.update(target_env)
+    env["AUTONEAT_PRESS_MARKER"] = str(marker)
     helper = subprocess.Popen(
         [sys.executable, str(Path(__file__).resolve()), "--_prepare-profile-helper"],
         stdout=subprocess.PIPE,
@@ -1642,75 +1660,8 @@ def open_prepare_profile_via_api(
     )
     start = time.time()
     dismissed: List[str] = []
-    try:
-        while time.time() - start < timeout:
-            # Modal handling below runs OCR first (a Neat modal must be dismissed
-            # before the editor underneath is usable). Window confirmation then
-            # prefers an AX probe: the editor's small chrome text often OCRs
-            # poorly at full-screen scale, which used to make this loop wait out
-            # the whole timeout even though SetInput had already opened the
-            # editor. The editor is a normal (non-modal) AX window and the JXA
-            # probe is bounded (subprocess timeout → None), so it is the fastest
-            # reliable proof the OFX button opened the window. AX is only invoked
-            # AFTER the OCR modal checks `continue`, so we never enumerate while a
-            # Neat modal is up (the original System-Events hang concern).
-            try:
-                state, _text, _rows = _read_screen_state(work_dir)
-            except Exception:
-                state = "unknown"
-            if state == "information-dialog":
-                detail = dismiss_information_dialog(work_dir)
-                if detail is not None:
-                    dismissed.append(f"information-dialog:{detail}")
-                else:
-                    _press_return()
-                    dismissed.append("information-dialog:return")
-                time.sleep(0.4)
-                continue
-            if state == "confirm-build-profile":
-                point = locate_confirm_button(work_dir, "continue") or locate_confirm_continue_button(work_dir)
-                if point is not None:
-                    _click_at_quartz(point[0], point[1])
-                    dismissed.append("confirm-build-profile")
-                    time.sleep(0.4)
-                    continue
-            if state == "confirm-small-area":
-                point = locate_modal_button(work_dir, "use")
-                if point is not None:
-                    _click_at_quartz(point[0], point[1])
-                    dismissed.append("confirm-small-area")
-                    time.sleep(0.4)
-                    continue
-            ocr_open = state in ("preparing-input", "editor-unprofiled", "editor-profiled", "editor")
-            # AX confirmation: no modal is up here (information/confirm states
-            # `continue` above), so probing the non-modal editor window is safe.
-            ax_open = False
-            if not ocr_open:
-                try:
-                    ax_open = _neat_editor_window() is not None
-                except Exception:
-                    ax_open = False
-            if ocr_open or ax_open:
-                try:
-                    helper.terminate()
-                    helper.wait(timeout=1)
-                except Exception:
-                    try:
-                        helper.kill()
-                    except Exception:
-                        pass
-                if ocr_open:
-                    kind = "editor" if state.startswith("editor") else state
-                else:
-                    kind = "editor-ax"
-                suffix = f";dismissed={','.join(dismissed)}" if dismissed else ""
-                return True, f"api-{kind}:{time.time() - start:.1f}s{suffix}"
-            if helper.poll() is not None:
-                stdout, stderr = helper.communicate(timeout=1)
-                detail = (stderr.strip() or stdout.strip() or f"exit {helper.returncode}")[:120]
-                return False, f"api-exit:{detail}"
-            time.sleep(0.2)
-    finally:
+
+    def _kill_helper() -> None:
         if helper.poll() is None:
             try:
                 helper.terminate()
@@ -1720,7 +1671,89 @@ def open_prepare_profile_via_api(
                     helper.kill()
                 except Exception:
                     pass
-    return False, f"api-timeout:{timeout:.1f}s"
+
+    def _handle_modal(state: str) -> bool:
+        """Dismiss a Neat modal during either phase. Returns True if handled."""
+        if state == "information-dialog":
+            detail = dismiss_information_dialog(work_dir)
+            dismissed.append(f"information-dialog:{detail}" if detail is not None else "information-dialog:return")
+            if detail is None:
+                _press_return()
+            time.sleep(0.4)
+            return True
+        if state == "confirm-build-profile":
+            point = locate_confirm_button(work_dir, "continue") or locate_confirm_continue_button(work_dir)
+            if point is not None:
+                _click_at_quartz(point[0], point[1])
+                dismissed.append("confirm-build-profile")
+                time.sleep(0.4)
+                return True
+        if state == "confirm-small-area":
+            point = locate_modal_button(work_dir, "use")
+            if point is not None:
+                _click_at_quartz(point[0], point[1])
+                dismissed.append("confirm-small-area")
+                time.sleep(0.4)
+                return True
+        return False
+
+    # Phase 1: wait for the OFX press to fire (marker) or the helper to error
+    # out. AX is unsafe here (System Events stalls while SetInput blocks), so we
+    # only OCR for modals and watch the marker.
+    pressed = False
+    try:
+        while time.time() - start < timeout:
+            if marker.exists():
+                pressed = True
+                break
+            if helper.poll() is not None:
+                stdout, stderr = helper.communicate(timeout=1)
+                detail = (stderr.strip() or stdout.strip() or f"exit {helper.returncode}")[:120]
+                return False, f"api-exit:{detail}"
+            try:
+                state, _text, _rows = _read_screen_state(work_dir)
+            except Exception:
+                state = "unknown"
+            if _handle_modal(state):
+                continue
+            time.sleep(0.1)
+    finally:
+        if not pressed and helper.poll() is None:
+            # Press never confirmed within the budget — give up this attempt and
+            # let the caller retry. Release the (still-blocked) helper first.
+            _kill_helper()
+
+    if not pressed:
+        return False, f"api-no-press:{timeout:.1f}s"
+
+    # Let SetInput actually raise the window before we interrupt it, then release
+    # the helper so System Events recovers and AX can see the (still-open) editor.
+    time.sleep(0.6)
+    _kill_helper()
+
+    # Phase 2: AX is reliable again. Confirm the editor window opened (it stays
+    # open after the blocked SetInput is interrupted), dismissing any modal the
+    # press raised.
+    confirm_deadline = time.time() + max(timeout, 6.0)
+    while time.time() < confirm_deadline:
+        try:
+            state, _text, _rows = _read_screen_state(work_dir)
+        except Exception:
+            state = "unknown"
+        if _handle_modal(state):
+            continue
+        if state in ("preparing-input", "editor-unprofiled", "editor-profiled", "editor"):
+            kind = "editor" if state.startswith("editor") else state
+            suffix = f";dismissed={','.join(dismissed)}" if dismissed else ""
+            return True, f"api-{kind}:{time.time() - start:.1f}s{suffix}"
+        try:
+            if _neat_editor_window() is not None:
+                suffix = f";dismissed={','.join(dismissed)}" if dismissed else ""
+                return True, f"api-editor-ax:{time.time() - start:.1f}s{suffix}"
+        except Exception:
+            pass
+        time.sleep(0.2)
+    return False, f"api-open-unconfirmed:{time.time() - start:.1f}s"
 
 
 def choose_input_data_linear(work_dir: Path, locator: Optional[Locator] = None) -> List[str]:
@@ -2783,6 +2816,16 @@ def _prepare_profile_helper_current() -> int:
         if neat is None:
             print(json.dumps({"ok": False, "error": "No Neat node in current comp"}))
             return 1
+        # Signal the supervising parent the instant before SetInput blocks, so it
+        # knows the OFX press fired (SetInput holds this process for as long as
+        # the editor window is open and stalls System Events meanwhile, so the
+        # parent cannot otherwise tell setup-vs-pressed). Best-effort.
+        marker = os.environ.get("AUTONEAT_PRESS_MARKER")
+        if marker:
+            try:
+                Path(marker).write_text("1", encoding="utf-8")
+            except Exception:
+                pass
         result = neat.SetInput("Prepare Profile___", 1)
         print(json.dumps({"ok": True, "result": repr(result)}))
         return 0
