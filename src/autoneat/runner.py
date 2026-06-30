@@ -1782,6 +1782,25 @@ def _process_clip(
             if media_range:
                 rec.add(f"media-range:{media_range}")
 
+            # Re-assert the mid-clip playhead NOW that we're on the Fusion page
+            # with the Neat node added. The initial seek in `_set_current_clip`
+            # happens before `OpenPage("fusion")`, and switching to Fusion (plus
+            # the second-session node-add) leaves the Fusion comp parked on its
+            # own current frame (the comp start). Neat reads the frame visible in
+            # the Fusion comp when "Prepare Noise Profile" is clicked, so a
+            # comp-start frame pops the "you have not selected a frame within the
+            # clip" dialog and Neat analyses the wrong frame. Seeking the timeline
+            # playhead while on the Fusion page moves the Fusion comp to the same
+            # in-clip frame, so the dialog never appears.
+            tc = playhead.get("timecode")
+            if tc:
+                try:
+                    timeline.SetCurrentTimecode(tc)
+                    time.sleep(cfg.step_delay)
+                    rec.add(f"fusion-frame:reseek={tc}")
+                except Exception as exc:  # pragma: no cover - defensive
+                    rec.add(f"fusion-frame:reseek-failed={exc!r}")
+
             # Adaptively open + drive Neat to a finished, applied, closed state.
             driver._open_prepare_profile(tag="prepare-profile")
             driver.drive(prepare_clicked=True)
