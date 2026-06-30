@@ -2,9 +2,71 @@
 
 from __future__ import annotations
 
+import subprocess
+import sys
 from contextlib import contextmanager
 from dataclasses import dataclass
+from inspect import Parameter, signature
 from typing import Any, Iterator, Optional
+
+
+def _resolve_kwargs(auto_launch: bool, timeout: float) -> dict:
+    """Build dvr ``Resolve(...)`` kwargs, adding ``discover_remote=False`` when
+    the installed dvr supports it so autoneat only ever drives local Resolve."""
+    kwargs: dict = {"auto_launch": auto_launch, "timeout": timeout}
+    try:
+        params = signature(_import_resolve()).parameters
+    except (TypeError, ValueError):
+        return kwargs
+    if "discover_remote" in params or any(
+        p.kind is Parameter.VAR_KEYWORD for p in params.values()
+    ):
+        kwargs["discover_remote"] = False
+    return kwargs
+
+
+def _import_resolve() -> Any:
+    try:
+        from dvr import Resolve
+    except ImportError as exc:  # pragma: no cover - import guard
+        raise RuntimeError(
+            "The dvr package is required for autoneat. "
+            "Install autoneat into an environment with dvr available."
+        ) from exc
+    return Resolve
+
+
+def connect_resolve_raw(*, auto_launch: bool = False, timeout: float = 30.0) -> Any:
+    """Connect to the local Resolve through ``dvr`` and return the raw handle.
+
+    Neat Video's OFX UI automation iterates Resolve's raw scripting objects, so
+    callers need the underlying fusionscript handle rather than the dvr wrapper.
+    """
+    Resolve = _import_resolve()
+    resolve = Resolve(**_resolve_kwargs(auto_launch, timeout))
+    return getattr(resolve, "raw", resolve)
+
+
+def resolve_running() -> bool:
+    """Best-effort check whether DaVinci Resolve is running on this machine."""
+    try:
+        if sys.platform == "darwin" or sys.platform.startswith("linux"):
+            name = "Resolve" if sys.platform == "darwin" else "resolve"
+            result = subprocess.run(
+                ["pgrep", "-x", name], capture_output=True, text=True, timeout=5
+            )
+            return result.returncode == 0
+        if sys.platform == "win32":
+            result = subprocess.run(
+                ["tasklist", "/FI", "IMAGENAME eq Resolve.exe"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            return "Resolve.exe" in result.stdout
+    except (FileNotFoundError, OSError, subprocess.SubprocessError):
+        pass
+    return False
 
 
 @dataclass

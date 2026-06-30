@@ -112,7 +112,7 @@ def _progress_path(project_name: Optional[str], timeline_name: Optional[str]) ->
     """Durable, per-(project, timeline) progress file.
 
     Resolution order:
-      1. ``SYNC_NEAT_RESULTS_JSON`` env var — explicit override (verbatim path).
+      1. ``AUTONEAT_RESULTS_JSON`` env var — explicit override (verbatim path).
       2. ``<cache>/progress/<project>__<timeline>.json`` — the default. Keyed by
          project+timeline so two timelines never clobber each other, and stored
          under the persistent cache (NOT ``/tmp``, which clears on reboot and was
@@ -126,7 +126,7 @@ def _progress_path(project_name: Optional[str], timeline_name: Optional[str]) ->
     env override is intentionally NOT propagated through the GUI-Terminal
     relaunch, which is why the default must be self-describing from the
     project/timeline rather than an env var the orchestrator sets."""
-    override = os.environ.get("SYNC_NEAT_RESULTS_JSON")
+    override = os.environ.get("AUTONEAT_RESULTS_JSON")
     if override:
         return Path(override)
     base = neat_ui._cache_base() / "progress"
@@ -223,8 +223,8 @@ def _gui_run_dir() -> Path:
 def _relaunch_in_gui_terminal(neat_args: Sequence[str]) -> int:
     """Re-run ``autoneat profile`` in a GUI Terminal and mirror its log to stdout.
 
-    Writes a self-contained ``.command`` script that re-invokes the toolkit
-    with the same args (re-entry guarded by ``SYNC_NEAT_IN_GUI``), launches it
+    Writes a self-contained ``.command`` script that re-invokes ``autoneat``
+    with the same args (re-entry guarded by ``AUTONEAT_IN_GUI``), launches it
     in the console user's Aqua session inside ONE reused Terminal window, then
     tails the script's log until it writes a sidecar ``.done`` file containing
     the exit code. Returns that exit code.
@@ -248,7 +248,7 @@ def _relaunch_in_gui_terminal(neat_args: Sequence[str]) -> int:
     script = (
         "#!/bin/bash\n"
         f"cd {shlex.quote(str(work_dir))}\n"
-        "export SYNC_NEAT_IN_GUI=1\n"
+        "export AUTONEAT_IN_GUI=1\n"
         # Bring Resolve to the front from inside the GUI session (the reliable
         # `open -a` path — DaVinci Resolve does not support AppleScript
         # `activate`, which errors -609). Best-effort; per-click activation in
@@ -372,37 +372,44 @@ def _frame_to_timecode(frame: int, timeline: Any) -> str:
 def _connect_resolve() -> Any:
     """Return the raw Resolve scripting handle via ``dvr``.
 
-    Per .cursor/rules/dvr-resolve-api.mdc and CLAUDE.md, never import
-    ``DaVinciResolveScript`` directly — go through the toolkit's local-only
-    dvr helper so closed local Resolve is a hard stop. This leaf drives Neat
-    Video's OFX UI through OCR + click automation, so it needs the raw handle
-    rather than the wrapper API.
+    Never imports ``DaVinciResolveScript`` directly — it connects through
+    ``dvr`` (local-only, no auto-launch) and returns the raw fusionscript
+    handle, which the Neat OFX UI automation needs to iterate Resolve's
+    timeline clips and OFX nodes.
     """
     try:
-        from common.encoding.resolve.connection import connect_local_resolve_raw
+        from autoneat.resolve import connect_resolve_raw
     except Exception as exc:
         raise RuntimeError(f"Could not import Resolve connection helper: {exc}") from exc
 
     try:
-        resolve = connect_local_resolve_raw()
+        return connect_resolve_raw(auto_launch=False)
     except Exception as exc:
         raise RuntimeError(f"Could not connect to local DaVinci Resolve via dvr: {exc}") from exc
-    # TODO: upstream to dvr — Neat Video timeline-clip iteration needs the raw
-    # fusionscript handle (GetProjectManager / GetCurrentTimeline / OpenFx).
-    return resolve
 
 
-def _current_timeline() -> Tuple[Any, Any]:
-    finished, resolve = _call_with_timeout(_connect_resolve, 6.0)
-    if not finished:
-        raise RuntimeError("Resolve connect timed out after 6s; scripting is likely wedged")
-    if resolve is None:
-        raise RuntimeError("Could not connect to Resolve")
-    project = resolve.GetProjectManager().GetCurrentProject()
-    timeline = project.GetCurrentTimeline() if project else None
-    if timeline is None:
-        raise RuntimeError("No current Resolve timeline")
-    return resolve, timeline
+def _current_timeline(connect_timeout: float = 20.0, attempts: int = 3) -> Tuple[Any, Any]:
+    """Connect and return ``(resolve, current_timeline)``, retrying briefly.
+
+    A healthy Resolve can be slow to answer the first scripting call right after
+    launch, so we retry a few times before declaring it unusable — otherwise the
+    startup self-heal needlessly force-quits a perfectly good Resolve.
+    """
+    last_err = "could not connect to Resolve"
+    for _ in range(max(1, attempts)):
+        finished, resolve = _call_with_timeout(_connect_resolve, connect_timeout)
+        if not finished:
+            last_err = f"Resolve connect timed out after {connect_timeout:.0f}s"
+        elif resolve is None:
+            last_err = "could not connect to Resolve"
+        else:
+            project = resolve.GetProjectManager().GetCurrentProject()
+            timeline = project.GetCurrentTimeline() if project else None
+            if timeline is not None:
+                return resolve, timeline
+            last_err = "project open but no current timeline" if project else "no current project"
+        time.sleep(2.0)
+    raise RuntimeError(last_err)
 
 
 # ---------------------------------------------------------------------------
@@ -443,9 +450,9 @@ def _call_with_timeout(fn: Any, timeout: float) -> Tuple[bool, Any]:
 
 def _resolve_running() -> bool:
     try:
-        from common.encoding.resolve.connection import is_local_resolve_running
+        from autoneat.resolve import resolve_running
 
-        return bool(is_local_resolve_running())
+        return bool(resolve_running())
     except Exception:
         # Fall back to a direct pgrep so recovery never depends on the import.
         try:
@@ -637,7 +644,11 @@ def _save_project(resolve: Any) -> bool:
     return bool(finished and value)
 
 
-def _establish_timeline(cfg: "DriveConfig") -> Tuple[Any, Any]:
+def _establish_timeline(
+    cfg: "DriveConfig",
+    project_hint: Optional[str] = None,
+    timeline_hint: Optional[str] = None,
+) -> Tuple[Any, Any]:
     """Connect to Resolve at startup, self-healing a not-ready/wedged/cold state.
 
     The happy path is simply "use the timeline that's already open". But Resolve
@@ -661,7 +672,13 @@ def _establish_timeline(cfg: "DriveConfig") -> Tuple[Any, Any]:
     except Exception as exc:  # noqa: BLE001
         if not cfg.auto_restart:
             raise
-        proj, tl = _recall_target_from_progress()
+        # Prefer the caller-provided target (the project/timeline this run was
+        # explicitly asked to drive). Only fall back to the most-recent progress
+        # file when no hint was given — never reopen some unrelated project a
+        # previous run happened to leave behind.
+        proj, tl = (project_hint, timeline_hint)
+        if not proj and not tl:
+            proj, tl = _recall_target_from_progress()
         print(
             f"  startup: Resolve not usable yet ({exc}); self-healing — "
             f"force-quit + relaunch"
@@ -929,13 +946,13 @@ def _add_neat_node(
     env = os.environ.copy()
     env.update(
         {
-            "SYNC_NEAT_TARGET_TRACK": str(_clip_track_index(clip)),
-            "SYNC_NEAT_TARGET_START": str(int(clip.GetStart())),
-            "SYNC_NEAT_TARGET_NAME": _clip_name(clip),
-            "SYNC_NEAT_FORCE_NEW": "0" if (reuse_existing and not reset) else "1",
-            "SYNC_NEAT_NO_COLOR_WRAP": "1" if no_color_wrap else "0",
-            "SYNC_NEAT_COLOR_WRAP_SCALE": str(color_wrap_scale),
-            "SYNC_NEAT_RESET": "1" if reset else "0",
+            "AUTONEAT_TARGET_TRACK": str(_clip_track_index(clip)),
+            "AUTONEAT_TARGET_START": str(int(clip.GetStart())),
+            "AUTONEAT_TARGET_NAME": _clip_name(clip),
+            "AUTONEAT_FORCE_NEW": "0" if (reuse_existing and not reset) else "1",
+            "AUTONEAT_NO_COLOR_WRAP": "1" if no_color_wrap else "0",
+            "AUTONEAT_COLOR_WRAP_SCALE": str(color_wrap_scale),
+            "AUTONEAT_RESET": "1" if reset else "0",
         }
     )
     helper = subprocess.Popen(
@@ -1709,9 +1726,9 @@ def _process_clip(
     with tempfile.TemporaryDirectory(prefix="neat-batch-", dir=str(neat_ui._cache_base())) as tmp:
         work_dir = Path(tmp)
         target_env = {
-            "SYNC_NEAT_TARGET_TRACK": str(_clip_track_index(clip)),
-            "SYNC_NEAT_TARGET_START": str(int(clip.GetStart())),
-            "SYNC_NEAT_TARGET_NAME": _clip_name(clip),
+            "AUTONEAT_TARGET_TRACK": str(_clip_track_index(clip)),
+            "AUTONEAT_TARGET_START": str(int(clip.GetStart())),
+            "AUTONEAT_TARGET_NAME": _clip_name(clip),
         }
         driver = NeatDriver(work_dir, rec, cfg, target_env=target_env)
 
@@ -2059,7 +2076,7 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=(
             "Skip clips that already appear in the previous run's sidecar "
-            "(SYNC_NEAT_RESULTS_JSON or /tmp/sync-neat/last-run.json). "
+            "(AUTONEAT_RESULTS_JSON or /tmp/autoneat/last-run.json). "
             "Use --retry-failed to re-attempt failed clips alongside skipping succeeded ones."
         ),
     )
@@ -2267,11 +2284,15 @@ def _build_parser() -> argparse.ArgumentParser:
         "--debug", action="store_true", help="Include Python tracebacks in failed JSON results"
     )
     parser.add_argument("--json", action="store_true", help="Print JSON results")
-    # Accepted as a no-op so chained invocations like
-    #   `autoneat profile ... and prepare X -p myshow`
-    # don't argparse-fail when the dispatcher injects --project across the
-    # whole chain. autoneat profile is project-agnostic — value is discarded.
+    # autoneat profile drives whatever timeline is already open, so it does not
+    # need a project. ``--project`` is accepted (and its basename used) only as
+    # the cold-start / self-heal reopen target if Resolve has to be relaunched.
     parser.add_argument("--project", "-p", default=None, help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--timeline",
+        default=None,
+        help="Cold-start/self-heal target timeline name (otherwise the open timeline is used)",
+    )
     return parser
 
 
@@ -2282,9 +2303,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     # SSH or from the farm worker (no window-server connection), re-run this
     # exact command inside a Terminal in the logged-in desktop session and
     # mirror its output back here. We probe the actual capture capability rather
-    # than guess from launchctl; SYNC_NEAT_IN_GUI guards against re-entry so the
+    # than guess from launchctl; AUTONEAT_IN_GUI guards against re-entry so the
     # relaunched run (which has display access) doesn't probe-and-relaunch again.
-    if os.environ.get("SYNC_NEAT_IN_GUI") != "1" and not _display_capturable():
+    if os.environ.get("AUTONEAT_IN_GUI") != "1" and not _display_capturable():
         return _relaunch_in_gui_terminal(list(argv) if argv is not None else sys.argv[1:])
 
     cfg = DriveConfig.from_args(args)
@@ -2307,8 +2328,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             print(f"[resume-open-neat] {status}")
         return 0 if result.get("ok") else 1
 
+    project_hint = None
+    if args.project:
+        project_hint = str(args.project).rsplit("/", 1)[-1].rsplit("\\", 1)[-1] or None
     try:
-        resolve, timeline = _establish_timeline(cfg)
+        resolve, timeline = _establish_timeline(
+            cfg, project_hint=project_hint, timeline_hint=args.timeline
+        )
     except Exception as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1

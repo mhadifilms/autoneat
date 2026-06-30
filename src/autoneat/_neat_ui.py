@@ -353,9 +353,9 @@ def _tesseract_ocr_image(image: Path, *, psm: int) -> List[Dict[str, Any]]:
     ``apt-get install tesseract-ocr`` (Debian/Ubuntu); the helper raises
     a clear error pointing at those commands if the binary is missing.
     """
-    from common import ocr as _ocr_lib
+    import shutil
 
-    if not _ocr_lib.available():
+    if shutil.which("tesseract") is None:
         raise RuntimeError(
             "tesseract binary not on PATH — install with "
             "`brew install tesseract` (macOS) or "
@@ -2364,11 +2364,11 @@ def _load_item_fusion_comp(item: Any) -> Any:
 
 
 def _open_neat_helper_current() -> int:
-    # Per .cursor/rules/dvr-resolve-api.mdc, never import DaVinciResolveScript
-    # directly — go through the toolkit's local-only dvr helper. Neat helper
-    # iterates Resolve's raw OFX nodes, so it uses the raw handle.
+    # Never import DaVinciResolveScript directly — connect through dvr
+    # (local-only). The Neat helper iterates Resolve's raw OFX nodes, so it
+    # uses the raw fusionscript handle.
     try:
-        from common.encoding.resolve.connection import connect_local_resolve_raw
+        from autoneat.resolve import connect_resolve_raw
     except Exception as exc:
         print(
             json.dumps(
@@ -2379,7 +2379,7 @@ def _open_neat_helper_current() -> int:
         return 1
 
     try:
-        resolve = connect_local_resolve_raw()
+        resolve = connect_resolve_raw()
     except Exception as exc:
         print(
             json.dumps(
@@ -2393,9 +2393,9 @@ def _open_neat_helper_current() -> int:
     project = resolve.GetProjectManager().GetCurrentProject()
     timeline = project.GetCurrentTimeline() if project else None
     item = None
-    target_track = os.environ.get("SYNC_NEAT_TARGET_TRACK")
-    target_start = os.environ.get("SYNC_NEAT_TARGET_START")
-    target_name = os.environ.get("SYNC_NEAT_TARGET_NAME")
+    target_track = os.environ.get("AUTONEAT_TARGET_TRACK")
+    target_start = os.environ.get("AUTONEAT_TARGET_START")
+    target_name = os.environ.get("AUTONEAT_TARGET_NAME")
     have_target = bool(timeline and target_track and target_start)
     if have_target:
         try:
@@ -2484,7 +2484,7 @@ def _open_neat_helper_current() -> int:
     # Reset: delete any existing Neat node + CST wrap tools so the node is
     # re-added from scratch (clears a stale or half-built noise profile). The
     # MediaIn1 → MediaOut1 connections are rebuilt by the connect logic below.
-    if os.environ.get("SYNC_NEAT_RESET") == "1":
+    if os.environ.get("AUTONEAT_RESET") == "1":
         for victim in (
             find_tool(SCALE_DOWN_NAME),
             find_tool(CST_IN_NAME),
@@ -2498,7 +2498,7 @@ def _open_neat_helper_current() -> int:
                 except Exception:
                     pass
 
-    reuse_existing = os.environ.get("SYNC_NEAT_FORCE_NEW") != "1"
+    reuse_existing = os.environ.get("AUTONEAT_FORCE_NEW") != "1"
     neat = find_tool_by_id(NEAT_REG_ID) if reuse_existing else None
     if neat is None:
         neat = comp.AddTool(NEAT_REG_ID, 1, 0)
@@ -2525,10 +2525,10 @@ def _open_neat_helper_current() -> int:
     # settings or build the CSTs, we fail loudly rather than silently feeding
     # near-black linear into Neat.
     wrap_info: Dict[str, Any] = {"applied": False}
-    skip_wrap = os.environ.get("SYNC_NEAT_NO_COLOR_WRAP") == "1"
+    skip_wrap = os.environ.get("AUTONEAT_NO_COLOR_WRAP") == "1"
     wrap_cfg: Optional[Dict[str, str]] = None
     if skip_wrap:
-        wrap_info["skip_reason"] = "SYNC_NEAT_NO_COLOR_WRAP=1"
+        wrap_info["skip_reason"] = "AUTONEAT_NO_COLOR_WRAP=1"
     elif project is None:
         wrap_info["skip_reason"] = "no current project (cannot read color settings)"
     else:
@@ -2668,13 +2668,13 @@ def _open_neat_helper_current() -> int:
     cst_in: Any = None
     cst_out: Any = None
     if wrap_cfg is not None:
-        raw_scale = os.environ.get("SYNC_NEAT_COLOR_WRAP_SCALE", "0.125")
+        raw_scale = os.environ.get("AUTONEAT_COLOR_WRAP_SCALE", "0.125")
         try:
             wrap_scale = float(raw_scale)
         except (TypeError, ValueError):
-            raise RuntimeError(f"Invalid SYNC_NEAT_COLOR_WRAP_SCALE={raw_scale!r}")
+            raise RuntimeError(f"Invalid AUTONEAT_COLOR_WRAP_SCALE={raw_scale!r}")
         if not (0 < wrap_scale <= 1):
-            raise RuntimeError(f"SYNC_NEAT_COLOR_WRAP_SCALE must be >0 and <=1, got {wrap_scale!r}")
+            raise RuntimeError(f"AUTONEAT_COLOR_WRAP_SCALE must be >0 and <=1, got {wrap_scale!r}")
         scale_down = _ensure_scale(SCALE_DOWN_NAME, x=0.25, gain=wrap_scale)
         cst_in = _ensure_cst(CST_IN_NAME, x=0.75, forward=True)
         cst_out = _ensure_cst(CST_OUT_NAME, x=1.75, forward=False)
@@ -2739,18 +2739,18 @@ def _prepare_profile_helper_current() -> int:
     parent process supervises and terminates this helper once the window appears.
     """
     try:
-        from common.encoding.resolve.connection import connect_local_resolve_raw
+        from autoneat.resolve import connect_resolve_raw
     except Exception as exc:
         print(json.dumps({"ok": False, "error": f"Could not import Resolve helper: {exc}"}))
         return 1
     try:
-        resolve = connect_local_resolve_raw()
+        resolve = connect_resolve_raw()
         project = resolve.GetProjectManager().GetCurrentProject()
         timeline = project.GetCurrentTimeline() if project else None
         item = None
-        target_track = os.environ.get("SYNC_NEAT_TARGET_TRACK")
-        target_start = os.environ.get("SYNC_NEAT_TARGET_START")
-        target_name = os.environ.get("SYNC_NEAT_TARGET_NAME")
+        target_track = os.environ.get("AUTONEAT_TARGET_TRACK")
+        target_start = os.environ.get("AUTONEAT_TARGET_START")
+        target_name = os.environ.get("AUTONEAT_TARGET_NAME")
         if timeline and target_track and target_start:
             for candidate in timeline.GetItemListInTrack("video", int(target_track)) or []:
                 if int(candidate.GetStart()) != int(target_start):
@@ -2798,12 +2798,12 @@ def _prepare_profile_helper_current() -> int:
 
 def _dump_neat_inputs_current() -> int:
     try:
-        from common.encoding.resolve.connection import connect_local_resolve_raw
+        from autoneat.resolve import connect_resolve_raw
     except Exception as exc:
         print(json.dumps({"ok": False, "error": f"Could not import Resolve helper: {exc}"}))
         return 1
     try:
-        resolve = connect_local_resolve_raw()
+        resolve = connect_resolve_raw()
         project = resolve.GetProjectManager().GetCurrentProject()
         timeline = project.GetCurrentTimeline() if project else None
         item = timeline.GetCurrentVideoItem() if timeline else None

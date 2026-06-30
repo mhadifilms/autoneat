@@ -52,7 +52,7 @@ def available() -> bool:
 
 # Operators can relocate the template cache (e.g. to a fast local disk or a
 # clean dir to force re-bootstrapping) and tests point it at a tmp dir.
-_TEMPLATE_DIR_ENV = "SYNC_TOOLKIT_NEAT_TEMPLATE_DIR"
+_TEMPLATE_DIR_ENV = "AUTONEAT_TEMPLATE_DIR"
 
 
 def _templates_root() -> Path:
