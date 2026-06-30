@@ -1644,10 +1644,16 @@ def open_prepare_profile_via_api(
     dismissed: List[str] = []
     try:
         while time.time() - start < timeout:
-            # Do not use AX/JXA window enumeration here. Neat's modal can make
-            # System Events hang while the helper is blocked in SetInput().
-            # Screenshot/OCR remains responsive and is enough to prove the OFX
-            # button opened a Neat UI state.
+            # Modal handling below runs OCR first (a Neat modal must be dismissed
+            # before the editor underneath is usable). Window confirmation then
+            # prefers an AX probe: the editor's small chrome text often OCRs
+            # poorly at full-screen scale, which used to make this loop wait out
+            # the whole timeout even though SetInput had already opened the
+            # editor. The editor is a normal (non-modal) AX window and the JXA
+            # probe is bounded (subprocess timeout → None), so it is the fastest
+            # reliable proof the OFX button opened the window. AX is only invoked
+            # AFTER the OCR modal checks `continue`, so we never enumerate while a
+            # Neat modal is up (the original System-Events hang concern).
             try:
                 state, _text, _rows = _read_screen_state(work_dir)
             except Exception:
@@ -1675,7 +1681,16 @@ def open_prepare_profile_via_api(
                     dismissed.append("confirm-small-area")
                     time.sleep(0.4)
                     continue
-            if state in ("preparing-input", "editor-unprofiled", "editor-profiled", "editor"):
+            ocr_open = state in ("preparing-input", "editor-unprofiled", "editor-profiled", "editor")
+            # AX confirmation: no modal is up here (information/confirm states
+            # `continue` above), so probing the non-modal editor window is safe.
+            ax_open = False
+            if not ocr_open:
+                try:
+                    ax_open = _neat_editor_window() is not None
+                except Exception:
+                    ax_open = False
+            if ocr_open or ax_open:
                 try:
                     helper.terminate()
                     helper.wait(timeout=1)
@@ -1684,7 +1699,10 @@ def open_prepare_profile_via_api(
                         helper.kill()
                     except Exception:
                         pass
-                kind = "editor" if state.startswith("editor") else state
+                if ocr_open:
+                    kind = "editor" if state.startswith("editor") else state
+                else:
+                    kind = "editor-ax"
                 suffix = f";dismissed={','.join(dismissed)}" if dismissed else ""
                 return True, f"api-{kind}:{time.time() - start:.1f}s{suffix}"
             if helper.poll() is not None:
