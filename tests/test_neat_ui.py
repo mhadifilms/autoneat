@@ -52,15 +52,20 @@ def test_neat_information_modal_still_matches():
     )
 
 
-def test_editor_control_geometry_uses_neat_window(monkeypatch):
-    monkeypatch.setattr(
-        neat_ui,
-        "_neat_editor_window",
-        lambda: {"position": [230, 84], "size": [1460, 880]},
-    )
+def test_editor_controls_locate_via_ocr_not_hardcoded(monkeypatch, tmp_path: Path):
+    """auto-profile/apply/cancel must resolve via OCR (window-anchored), never a
+    hardcoded window-offset shortcut. The old geometry helper is gone, and
+    ``locate_and_click`` falls through to the window-anchored OCR locate."""
+    assert not hasattr(neat_ui, "_editor_control_geometry_point")
 
-    assert neat_ui._editor_control_geometry_point("auto-profile") == (390.0, 166.0)
-    assert neat_ui._editor_control_geometry_point("apply") == pytest.approx((1386.32, 870.72))
+    loc = neat_ui.Locator(tmp_path, learn=False)
+    monkeypatch.setattr(loc, "_capture_stable", lambda label: None)
+    monkeypatch.setattr(neat_ui, "_locate_editor_control", lambda label, wd: (501.0, 207.0))
+    monkeypatch.setattr(neat_ui, "_click_at_quartz", lambda x, y: None)
+
+    point, method = loc.locate_and_click("auto-profile", editor=True)
+    assert point == (501.0, 207.0)
+    assert method == "window"
 
 
 def test_editor_profile_ready_requires_neat_editor_window(monkeypatch, tmp_path: Path):

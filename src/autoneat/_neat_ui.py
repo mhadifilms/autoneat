@@ -1177,24 +1177,6 @@ def _input_gamma_button_point() -> Optional[Tuple[float, float]]:
     return _window_point(window, 52, -14)
 
 
-def _editor_control_geometry_point(label: str) -> Optional[Tuple[float, float]]:
-    """Return a first-run bootstrap point for stable Neat editor controls.
-
-    Template/OCR remains the preferred path. This geometry fallback is only used
-    when no learned template exists yet, and keeps transient macOS banners from
-    turning a known toolbar click into an expensive OCR failure.
-    """
-    window = _neat_editor_window()
-    if window is not None:
-        if label == "auto-profile":
-            return _window_point(window, 160, 82)
-        if label == "apply":
-            return _window_fraction_point(window, 0.792, 0.894)
-        if label == "cancel":
-            return _window_fraction_point(window, 0.725, 0.894)
-    return None
-
-
 def _screen_size(work_dir: Path, *, name: str) -> Tuple[int, int]:
     global _SCREEN_SIZE_CACHE
     if _SCREEN_SIZE_CACHE is not None:
@@ -1561,12 +1543,6 @@ class Locator:
                     return (mx, my), f"template:{score:.2f}"
             frame = quick
             size = quick_size
-
-        if editor and label in {"auto-profile", "apply", "cancel"}:
-            point = _editor_control_geometry_point(label)
-            if point is not None:
-                _click_at_quartz(point[0], point[1])
-                return point, "window-geometry"
 
         # Authoritative frame for OCR/template fallback: wait briefly for the
         # screen to settle so we never locate against a mid-animation render.
