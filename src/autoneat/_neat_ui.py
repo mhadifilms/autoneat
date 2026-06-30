@@ -1726,15 +1726,19 @@ def open_prepare_profile_via_api(
     if not pressed:
         return False, f"api-no-press:{timeout:.1f}s"
 
-    # Let SetInput actually raise the window before we interrupt it, then release
-    # the helper so System Events recovers and AX can see the (still-open) editor.
-    time.sleep(0.6)
+    # Give SetInput a moment to register the press in Resolve before we release
+    # the helper (interrupting the call). Releasing it does not abort the press —
+    # Neat keeps preparing and opens the editor — and it lets System Events
+    # recover so AX can confirm the window in phase 2.
+    time.sleep(1.5)
     _kill_helper()
 
-    # Phase 2: AX is reliable again. Confirm the editor window opened (it stays
-    # open after the blocked SetInput is interrupted), dismissing any modal the
-    # press raised.
-    confirm_deadline = time.time() + max(timeout, 6.0)
+    # Phase 2: AX is reliable again (releasing the helper does NOT abort the
+    # OFX press — Resolve has already registered it). Confirm the editor window
+    # opened, dismissing any modal the press raised. Neat spends time "preparing
+    # input" (analysing frames) after the press before the editor appears, so
+    # this budget must cover that, not just a UI animation.
+    confirm_deadline = time.time() + max(timeout, 40.0)
     while time.time() < confirm_deadline:
         try:
             state, _text, _rows = _read_screen_state(work_dir)

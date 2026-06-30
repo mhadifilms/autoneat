@@ -2187,7 +2187,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--dry-run", action="store_true", help="List target clips without opening Neat"
     )
     parser.add_argument(
-        "--open-timeout", type=float, default=18.0, help="Seconds to wait for Neat to open"
+        "--open-timeout", type=float, default=45.0, help="Seconds to wait for Neat to open"
     )
     parser.add_argument(
         "--editor-timeout",
