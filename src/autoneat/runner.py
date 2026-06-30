@@ -1109,11 +1109,6 @@ class NeatDriver:
     def _click(
         self, label: str, *, editor: bool = False, tag: Optional[str] = None
     ) -> Tuple[float, float]:
-        fast = neat_ui.fast_control_point(label, self.work_dir)
-        if fast is not None:
-            neat_ui._click_at_quartz(fast[0], fast[1])
-            self.rec.add(f"{tag or label}:fast-geometry:{round(fast[0])},{round(fast[1])}")
-            return fast
         point, method = self.locator.locate_and_click(label, editor=editor)
         self.rec.add(f"{tag or label}:{method}:{round(point[0])},{round(point[1])}")
         return point
@@ -1158,19 +1153,31 @@ class NeatDriver:
             return False
 
     def _open_prepare_profile(self, *, tag: str) -> bool:
-        """Open Neat from the selected node, preferring the OFX API helper."""
+        """Open Neat via the OFX "Prepare Profile" input — API only, no fallback.
+
+        Triggering Neat's inspector button through the OFX input is the
+        deterministic way to open the editor: it acts on the selected node
+        directly, with no screen-geometry guess. There is intentionally NO
+        click fallback — a blind/geometry click was only ever needed because the
+        API's open-detection misread an open editor (with the Fusion Inspector
+        bleeding through the full-screen OCR) as still-closed and timed out.
+        With that classification fixed, the API confirms the open window itself.
+        If it genuinely fails, the drive loop re-enters from ``inspector-prepare``
+        and retries the API until ``max_open_attempts``, then fails loudly.
+        """
         cfg = self.cfg
         self._open_attempts = getattr(self, "_open_attempts", 0)
         if self._open_attempts >= cfg.max_open_attempts:
-            raise RuntimeError("Clicked 'Prepare Noise Profile' but Neat's window never opened")
+            raise RuntimeError(
+                "Neat's 'Prepare Noise Profile' OFX input never opened the editor "
+                f"after {cfg.max_open_attempts} attempts"
+            )
         ok, detail = neat_ui.open_prepare_profile_via_api(
             self.work_dir,
             timeout=max(cfg.open_timeout, 6.0),
             target_env=self.target_env,
         )
         self.rec.add(f"{tag}:{detail}")
-        if not ok:
-            self._click("prepare-profile", tag=f"{tag}-geometry")
         self._open_attempts += 1
         time.sleep(max(cfg.step_delay, 0.25 if ok else 0.6))
         return True

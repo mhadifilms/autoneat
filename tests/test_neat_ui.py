@@ -60,6 +60,28 @@ def test_doppler_window_picker_text_is_not_neat_information_modal(monkeypatch, t
     assert "doppler" not in text
 
 
+def test_open_editor_with_inspector_bleed_classifies_as_editor():
+    """When the Neat window is open over Resolve, the full-screen OCR also reads
+    the Fusion Inspector behind it ("prepare noise profile / controls /
+    settings"). Strong editor chrome (text that only exists in the open window)
+    must still win, otherwise open-via-API misreads the open editor as
+    "inspector-prepare" and times out (the bug that forced a click fallback)."""
+    text = (
+        "Neat Video 6.1.2 Pro plug-in for Resolve  Beginner Mode  "
+        "Prepare Noise Profile  Auto Profile  Generic Profile  Load Profile  "
+        "Device Noise Profile  profile not ready  "
+        # Fusion Inspector bleeding through behind the window:
+        "Controls  Settings  Prepare Noise Profile"
+    )
+    assert neat_ui._screen_state_from_text(text) == "editor-unprofiled"
+
+
+def test_inspector_without_editor_chrome_stays_inspector():
+    """No strong editor chrome → the Inspector signature still means closed."""
+    text = "ReduceNoisev61  Prepare Noise Profile  Controls  Settings  Adjust Filter Settings"
+    assert neat_ui._screen_state_from_text(text) == "inspector-prepare"
+
+
 def test_neat_information_modal_still_matches():
     assert (
         neat_ui._screen_state_from_text(

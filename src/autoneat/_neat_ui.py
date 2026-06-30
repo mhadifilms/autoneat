@@ -798,7 +798,6 @@ def _screen_state_from_text(text: str) -> str:
             "profile ready",
         )
     )
-    neat_window_open = strong_editor_chrome or weak_editor_chrome
     # Neat's modal "Information" dialog (e.g. the Input-Data-Gain / dynamic-range
     # notice, or the "select a frame first" notice) sits on top of everything
     # and must be dismissed before the editor underneath is usable.
@@ -816,12 +815,8 @@ def _screen_state_from_text(text: str) -> str:
         return "preparing-input"
     if "continue" in text and "neat video" in text and "trial" in text:
         return "demo-splash"
-    # Resolve's Fusion Inspector can contain Neat-looking labels ("Device Noise
-    # Profile", "Adjust and preview") while the Neat editor is not open. This
-    # explicit Inspector signature must win before the editor-chrome branch.
-    if "prepare noise profile" in text and "controls" in text and "settings" in text:
-        return "inspector-prepare"
-    if neat_window_open:
+
+    def _editor_state() -> str:
         if "profile not ready" in text:
             return "editor-unprofiled"
         if any(
@@ -829,9 +824,27 @@ def _screen_state_from_text(text: str) -> str:
             for token in ("noise level", "profile check", "build profile", "profile ready")
         ):
             return "editor-profiled"
-        # Open editor with no explicit "profile not ready" — default to
-        # unprofiled; the driver always Auto-Profiles before Apply regardless.
+        # Open editor with no explicit profile text — default to unprofiled; the
+        # driver always Auto-Profiles before Apply regardless.
         return "editor-unprofiled"
+
+    # Strong editor chrome ("plug-in for resolve" / "beginner mode" / the
+    # "Generic Profile"/"Load Profile" tabs) appears ONLY in the open Neat
+    # window, never in the Fusion Inspector. When it is visible the editor IS
+    # open — even if the Inspector behind the window bleeds "prepare noise
+    # profile / controls / settings" into the same full-screen OCR pass — so it
+    # must win over the Inspector signature below. Otherwise an open editor reads
+    # as "inspector-prepare" and open-via-API never confirms the window opened,
+    # which is exactly what made the API path time out and fall back to a click.
+    if strong_editor_chrome:
+        return _editor_state()
+    # Resolve's Fusion Inspector can contain Neat-looking labels ("Device Noise
+    # Profile", "Adjust and preview") while the Neat editor is NOT open. This
+    # explicit Inspector signature must win over WEAK editor chrome only.
+    if "prepare noise profile" in text and "controls" in text and "settings" in text:
+        return "inspector-prepare"
+    if weak_editor_chrome:
+        return _editor_state()
     if "prepare noise profile" in text:
         return "inspector-prepare"
     # Fallback: the Neat node is selected in the Fusion Inspector (its node name
@@ -1227,18 +1240,6 @@ def _input_gamma_button_point_from_screen(work_dir: Path) -> Tuple[float, float]
 def _linear_menu_option_point_from_screen(work_dir: Path) -> Tuple[float, float]:
     screen_w, screen_h = _screen_size(work_dir, name="input-gamma-linear-screen-size.png")
     return (float(screen_w) * 0.215, float(screen_h) * 0.922)
-
-
-def fast_control_point(label: str, work_dir: Path) -> Optional[Tuple[float, float]]:
-    """Known stable Neat/Resolve control centers on the render-node layout."""
-    fractions = {
-        "prepare-profile": (0.891, 0.216),
-    }
-    frac = fractions.get(label)
-    if frac is None:
-        return None
-    screen_w, screen_h = _screen_size(work_dir, name=f"fast-{label}-screen-size.png")
-    return (float(screen_w) * frac[0], float(screen_h) * frac[1])
 
 
 def capture_control_region(label: str, work_dir: Path, *, name: str) -> Optional[Path]:
