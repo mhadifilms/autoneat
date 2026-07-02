@@ -35,3 +35,38 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*
+
+  # Optional: bump the Homebrew tap formula to this release.
+  # Inert until the repository variable UPDATE_HOMEBREW_TAP is "true" and a
+  # HOMEBREW_TAP_TOKEN secret with push access to mhadifilms/homebrew-tap exists.
+  homebrew:
+    name: Update Homebrew tap
+    needs: release
+    if: ${{ vars.UPDATE_HOMEBREW_TAP == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve tag
+        id: meta
+        run: |
+          TAG="${{ github.ref_name }}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Compute source tarball checksum
+        id: sha
+        run: |
+          URL="https://github.com/${{ github.repository }}/archive/refs/tags/${{ steps.meta.outputs.tag }}.tar.gz"
+          echo "sha256=$(curl -fsSL "$URL" | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Update formula
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/mhadifilms/homebrew-tap.git" tap
+          cd tap
+          FORMULA=Formula/autoneat.rb
+          sed -i -E "s|^  url \".*\"|  url \"https://github.com/${{ github.repository }}/archive/refs/tags/${{ steps.meta.outputs.tag }}.tar.gz\"|" "$FORMULA"
+          sed -i -E "s|^  sha256 \".*\"|  sha256 \"${{ steps.sha.outputs.sha256 }}\"|" "$FORMULA"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -am "autoneat ${{ steps.meta.outputs.tag }}"
+          git push
