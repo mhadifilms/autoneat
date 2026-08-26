@@ -59,7 +59,7 @@ import time
 import traceback
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from autoneat import _neat_ui as neat_ui
 from autoneat import _neat_vision as neat_vision
@@ -2322,8 +2322,74 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
-    args = _build_parser().parse_args(argv)
+def _profile_options_namespace(
+    options: Mapping[str, Any],
+    *,
+    timeline_name: Optional[str] = None,
+) -> argparse.Namespace:
+    """Overlay recognized profile values onto parser-owned defaults."""
+
+    parser = _build_parser()
+    args = parser.parse_args([])
+    destinations = {action.dest for action in parser._actions}
+    for name, value in options.items():
+        if name in destinations:
+            setattr(args, name, value)
+    if timeline_name is not None:
+        args.timeline = timeline_name
+    return args
+
+
+def _profile_options_argv(args: argparse.Namespace) -> List[str]:
+    """Serialize changed options only for AutoNeat's GUI-process relaunch."""
+
+    parser = _build_parser()
+    argv: List[str] = []
+    for action in parser._actions:
+        if not action.option_strings or action.dest == "help":
+            continue
+        value = getattr(args, action.dest, action.default)
+        if value == action.default:
+            continue
+        option = max(action.option_strings, key=len)
+        if isinstance(action, argparse._StoreTrueAction):
+            if value:
+                argv.append(option)
+            continue
+        if isinstance(action, argparse._StoreFalseAction):
+            if not value:
+                argv.append(option)
+            continue
+        argv.append(option)
+        if action.nargs in {"+", "*"}:
+            argv.extend(str(item) for item in value)
+        else:
+            argv.append(str(value))
+    return argv
+
+
+def run_profile_options(
+    options: Mapping[str, Any],
+    *,
+    timeline_name: Optional[str] = None,
+) -> int:
+    """Run the production profile flow from already-parsed option values.
+
+    Unknown keys are ignored so embedding applications can pass their complete
+    command object without duplicating AutoNeat's option inventory. AutoNeat's
+    parser remains the sole owner of recognized fields and defaults.
+    """
+
+    args = _profile_options_namespace(options, timeline_name=timeline_name)
+    return main(_parsed_args=args)
+
+
+def main(
+    argv: Optional[Sequence[str]] = None,
+    *,
+    _parsed_args: Optional[argparse.Namespace] = None,
+) -> int:
+    args = _parsed_args or _build_parser().parse_args(argv)
 
     # Neat's UI automation needs real screen-capture access. When invoked over
     # SSH or from the farm worker (no window-server connection), re-run this
@@ -2332,7 +2398,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     # than guess from launchctl; AUTONEAT_IN_GUI guards against re-entry so the
     # relaunched run (which has display access) doesn't probe-and-relaunch again.
     if os.environ.get("AUTONEAT_IN_GUI") != "1" and not _display_capturable():
-        return _relaunch_in_gui_terminal(list(argv) if argv is not None else sys.argv[1:])
+        relaunch_argv = (
+            _profile_options_argv(args)
+            if _parsed_args is not None
+            else (list(argv) if argv is not None else sys.argv[1:])
+        )
+        return _relaunch_in_gui_terminal(relaunch_argv)
 
     cfg = DriveConfig.from_args(args)
 

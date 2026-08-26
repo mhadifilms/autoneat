@@ -62,6 +62,18 @@ result = run_profile(
 )
 ```
 
+Embedding commands that compose AutoNeat's CLI parser can preserve the full
+watchdog/recovery flow without rebuilding argv:
+
+```python
+from autoneat.runner import run_profile_options
+
+exit_code = run_profile_options(vars(parsed_args), timeline_name="My Show_Neat")
+```
+
+Only AutoNeat-owned parser fields are consumed; unrelated embedding fields are
+ignored.
+
 ## How It Works
 
 For each selected timeline clip, `autoneat`:
