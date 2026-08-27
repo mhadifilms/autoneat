@@ -28,6 +28,13 @@ Run against the current Resolve project/timeline:
 autoneat profile
 ```
 
+Capture the node's visible display, including from an SSH session:
+
+```bash
+autoneat capture --output screen.png
+autoneat capture --json --b64
+```
+
 Run against a specific project/timeline and shot filter:
 
 ```bash
@@ -51,7 +58,7 @@ Important options:
 ## Python API
 
 ```python
-from autoneat import ProfileOptions, run_profile
+from autoneat import ProfileOptions, capture_screen, run_profile
 
 result = run_profile(
     ProfileOptions(
@@ -60,6 +67,8 @@ result = run_profile(
         shot_ids=["001", "002"],
     )
 )
+
+screen = capture_screen("screen.png")
 ```
 
 Embedding commands that compose AutoNeat's CLI parser can preserve the full
