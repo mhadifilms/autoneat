@@ -63,6 +63,7 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from autoneat import _neat_ui as neat_ui
 from autoneat import _neat_vision as neat_vision
+from autoneat.resolve import connect_local_resolve
 
 # States in which a Neat window or modal is on screen. While any of these is
 # showing, Resolve scripting must NOT be touched (it wedges) and the batch must
@@ -353,7 +354,7 @@ class StepRecorder:
 
 
 def _frame_to_timecode(frame: int, timeline: Any) -> str:
-    fps = round(float(timeline.GetSetting("timelineFrameRate")))
+    fps = round(float(timeline.GetSettings().get('timelineFrameRate')))
     start_tc = timeline.GetStartTimecode()
     parts = start_tc.split(":")
     start_frame = (
@@ -369,23 +370,6 @@ def _frame_to_timecode(frame: int, timeline: Any) -> str:
     return f"{h:02d}:{m:02d}:{s:02d}:{f:02d}"
 
 
-def _connect_resolve() -> Any:
-    """Return the raw Resolve scripting handle via ``dvr``.
-
-    Never imports ``DaVinciResolveScript`` directly — it connects through
-    ``dvr`` (local-only, no auto-launch) and returns the raw fusionscript
-    handle, which the Neat OFX UI automation needs to iterate Resolve's
-    timeline clips and OFX nodes.
-    """
-    try:
-        from autoneat.resolve import connect_resolve_raw
-    except Exception as exc:
-        raise RuntimeError(f"Could not import Resolve connection helper: {exc}") from exc
-
-    try:
-        return connect_resolve_raw(auto_launch=False)
-    except Exception as exc:
-        raise RuntimeError(f"Could not connect to local DaVinci Resolve via dvr: {exc}") from exc
 
 
 def _current_timeline(connect_timeout: float = 20.0, attempts: int = 3) -> Tuple[Any, Any]:
@@ -397,7 +381,7 @@ def _current_timeline(connect_timeout: float = 20.0, attempts: int = 3) -> Tuple
     """
     last_err = "could not connect to Resolve"
     for _ in range(max(1, attempts)):
-        finished, resolve = _call_with_timeout(_connect_resolve, connect_timeout)
+        finished, resolve = _call_with_timeout(connect_local_resolve, connect_timeout)
         if not finished:
             last_err = f"Resolve connect timed out after {connect_timeout:.0f}s"
         elif resolve is None:
@@ -576,7 +560,7 @@ def _wait_for_resolve_ready(
     modal_dismiss_left = 6
     while time.time() < deadline:
         try:
-            finished, resolve = _call_with_timeout(_connect_resolve, 6.0)
+            finished, resolve = _call_with_timeout(connect_local_resolve, 6.0)
             if not finished:
                 last_err = "Resolve connect timed out after 6s"
                 time.sleep(3.0)

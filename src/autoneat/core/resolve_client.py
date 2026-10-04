@@ -46,7 +46,7 @@ def clip_track_index(clip: Any) -> int:
 
 def frame_to_timecode(frame: int, timeline: Any) -> str:
     """SMPTE TC for a timeline frame, honouring the timeline's start TC."""
-    fps = round(float(timeline.GetSetting("timelineFrameRate")))
+    fps = round(float(timeline.GetSettings().get('timelineFrameRate')))
     start_tc = timeline.GetStartTimecode()
     parts = start_tc.split(":")
     start_frame = (
