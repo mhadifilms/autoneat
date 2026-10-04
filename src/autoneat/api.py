@@ -29,7 +29,7 @@ def run_profile(
     """Run Auto Profile against a Resolve project/timeline.
 
     Tests and embedding callers may pass explicit Resolve handles. Normal CLI
-    usage lets autoneat connect through ``dvr`` and select the requested
+    usage loads the installed native scripting API and selects the requested
     project/timeline.
     """
     if resolve is not None and project is not None and timeline is not None:

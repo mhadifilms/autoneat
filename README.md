@@ -106,3 +106,14 @@ python3 -m venv .venv
 ## License
 
 [MIT](LICENSE).
+
+## Native Resolve scripting
+
+AutoNeat requires Resolve Studio 21.1 or newer. It uses the installed
+`DaVinciResolveScript` module directly, with External scripting set to Local.
+Set `RESOLVE_SCRIPT_API` to the installed Developer/Scripting directory when
+it differs from the standard application path. Set `RESOLVE_SCRIPT_LIB` only
+when the vendor module requires a nonstandard scripting library location.
+No Python Resolve wrapper is installed. Open Resolve before a profiling run.
+Project and timeline switches require a successful save; ambiguous names stop
+the batch. Validate Neat Video profiling on the intended host before production.

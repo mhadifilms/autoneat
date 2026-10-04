@@ -16,12 +16,10 @@ def check_environment() -> list[tuple[str, bool, str]]:
     for tool in REQUIRED_TOOLS:
         found = shutil.which(tool)
         rows.append((tool, bool(found), found or "not found on PATH"))
-    try:
-        import dvr  # noqa: F401
+    from autoneat.resolve import native_sdk_path
 
-        rows.append(("dvr", True, "importable"))
-    except ImportError as exc:
-        rows.append(("dvr", False, str(exc)))
+    sdk = native_sdk_path()
+    rows.append(("Resolve SDK", sdk.is_file(), str(sdk)))
     try:
         import Quartz  # noqa: F401
 

@@ -72,11 +72,11 @@ def detect_color_wrap(project: Any) -> Dict[str, Any]:
     if project is None:
         return {"applied": False, "skip_reason": "no current project"}
 
-    mode = (project.GetSetting("colorScienceMode") or "").lower()
+    mode = (project.GetSettings().get('colorScienceMode') or "").lower()
     if mode not in ("acescc", "acescct"):
         return {"applied": False, "skip_reason": f"colorScienceMode={mode!r} (not ACES)"}
 
-    nits_raw = project.GetSetting("hdrMasteringLuminanceMax") or "0"
+    nits_raw = project.GetSettings().get('hdrMasteringLuminanceMax') or "0"
     nits = int(float(nits_raw))
     pq_gamma = PQ_GAMMA_BY_NITS.get(nits)
     if not pq_gamma:

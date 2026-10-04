@@ -459,17 +459,6 @@ def _tesseract_ocr_image(image: Path, *, psm: int) -> List[Dict[str, Any]]:
     return rows
 
 
-def _ocr_image(image: Path, output_base: Path, *, psm: int = 6) -> List[Dict[str, Any]]:
-    """OCR a screen-grab via tesseract. Raises on failure.
-
-    ``output_base`` is retained for call-site compatibility but unused
-    — tesseract writes its TSV directly to stdout (no intermediate
-    file needed).
-    """
-    del output_base  # unused
-    return _tesseract_ocr_image(image, psm=psm)
-
-
 def _ocr_screen_region(
     work_dir: Path,
     *,
@@ -516,7 +505,7 @@ def _ocr_screen_region(
         gray = ImageEnhance.Contrast(gray).enhance(3.0)
         gray.save(region, quality=95)
 
-    rows = _ocr_image(region, work_dir / f"{name}-ocr", psm=6)
+    rows = _tesseract_ocr_image(region, psm=6)
     for row in rows:
         row["_scale"] = scale
         row["_screen_width"] = screen_w
@@ -2182,7 +2171,7 @@ def locate_confirm_button(work_dir: Path, which: str = "continue") -> Optional[T
 def _set_timeline_to_item_midpoint(timeline: Any, item: Any) -> None:
     try:
         mid_frame = int(item.GetStart()) + max(1, int(item.GetDuration()) // 2)
-        fps = round(float(timeline.GetSetting("timelineFrameRate")))
+        fps = round(float(timeline.GetSettings().get('timelineFrameRate')))
         parts = str(timeline.GetStartTimecode()).split(":")
         start_tc_frame = (
             int(parts[0]) * 3600 * fps
@@ -2396,11 +2385,8 @@ def _load_item_fusion_comp(item: Any) -> Any:
 
 
 def _open_neat_helper_current() -> int:
-    # Never import DaVinciResolveScript directly — connect through dvr
-    # (local-only). The Neat helper iterates Resolve's raw OFX nodes, so it
-    # uses the raw fusionscript handle.
     try:
-        from autoneat.resolve import connect_resolve_raw
+        from autoneat.resolve import connect_local_resolve
     except Exception as exc:
         print(
             json.dumps(
@@ -2411,16 +2397,15 @@ def _open_neat_helper_current() -> int:
         return 1
 
     try:
-        resolve = connect_resolve_raw()
+        resolve = connect_local_resolve()
     except Exception as exc:
         print(
             json.dumps(
-                {"ok": False, "error": f"Could not connect to local Resolve via dvr: {exc}"}
+                {"ok": False, "error": f"Could not connect to local Resolve through the native API: {exc}"}
             ),
             flush=True,
         )
         return 1
-    # TODO: upstream to dvr — Neat OFX node manipulation needs the raw handle.
 
     project = resolve.GetProjectManager().GetCurrentProject()
     timeline = project.GetCurrentTimeline() if project else None
@@ -2564,8 +2549,8 @@ def _open_neat_helper_current() -> int:
     elif project is None:
         wrap_info["skip_reason"] = "no current project (cannot read color settings)"
     else:
-        mode = (project.GetSetting("colorScienceMode") or "").lower()
-        nits_raw = project.GetSetting("hdrMasteringLuminanceMax") or "0"
+        mode = (project.GetSettings().get('colorScienceMode') or "").lower()
+        nits_raw = project.GetSettings().get('hdrMasteringLuminanceMax') or "0"
         try:
             nits = int(float(nits_raw))
         except (TypeError, ValueError):
@@ -2603,7 +2588,7 @@ def _open_neat_helper_current() -> int:
             # DRCM: Resolve linearises the image into Fusion, so Neat sees the
             # timeline gamut at LINEAR gamma (near-black). Re-encode that same
             # gamut Linear → PQ for analysis, round-trip back to linear at MediaOut.
-            tl_gamut = (project.GetSetting("colorSpaceTimeline") or "").strip()
+            tl_gamut = (project.GetSettings().get('colorSpaceTimeline') or "").strip()
             cst_gamut = _DRCM_GAMUT_TO_CST.get(tl_gamut)
             if cst_gamut is None:
                 print(
@@ -2771,12 +2756,12 @@ def _prepare_profile_helper_current() -> int:
     parent process supervises and terminates this helper once the window appears.
     """
     try:
-        from autoneat.resolve import connect_resolve_raw
+        from autoneat.resolve import connect_local_resolve
     except Exception as exc:
         print(json.dumps({"ok": False, "error": f"Could not import Resolve helper: {exc}"}))
         return 1
     try:
-        resolve = connect_resolve_raw()
+        resolve = connect_local_resolve()
         project = resolve.GetProjectManager().GetCurrentProject()
         timeline = project.GetCurrentTimeline() if project else None
         item = None
@@ -2840,12 +2825,12 @@ def _prepare_profile_helper_current() -> int:
 
 def _dump_neat_inputs_current() -> int:
     try:
-        from autoneat.resolve import connect_resolve_raw
+        from autoneat.resolve import connect_local_resolve
     except Exception as exc:
         print(json.dumps({"ok": False, "error": f"Could not import Resolve helper: {exc}"}))
         return 1
     try:
-        resolve = connect_resolve_raw()
+        resolve = connect_local_resolve()
         project = resolve.GetProjectManager().GetCurrentProject()
         timeline = project.GetCurrentTimeline() if project else None
         item = timeline.GetCurrentVideoItem() if timeline else None
